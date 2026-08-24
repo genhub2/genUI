@@ -1,4 +1,3 @@
---[[ remybb ]]
 if _G._genToken then pcall(function() _G._genToken.unload() end) end
 _G.GenLib = nil
 
@@ -12,21 +11,6 @@ local function pullUI(name)
 end
 
 assert(loadstring(pullUI("gennegen_lib.lua")), "lib load failed")()
-
-local esp = nil
-do
-    local ok, src = pcall(function() return httpget(UIBASE .. "remybb_esp.lua") end)
-    if ok and type(src) == "string" and #src > 100 and src:find("return") then
-        local eok, emod = pcall(loadstring, src)
-        if eok and emod then pcall(emod); esp = _G.__remyEsp end
-    else
-        local okL, lsrc = pcall(function() return readfile("remybb_esp.lua") end)
-        if okL and type(lsrc) == "string" and #lsrc > 100 and lsrc:find("return") then
-            local eok, emod = pcall(loadstring, lsrc)
-            if eok and emod then pcall(emod); esp = _G.__remyEsp end
-        end
-    end
-end
 
 do
 local Players = game:GetService("Players")
@@ -43,7 +27,12 @@ local ymerAutoT = 0
 local lalaPrev = false
 local CFG_FILE = "remybb-config.json"
 local TAU = math.pi * 2
+local DM = 12
 local DN = 18
+local POOL = 16
+local VIS_SEG = 12
+local C_TXT_A = Color3.fromRGB(235, 235, 240)
+local C_TXT_B = Color3.fromRGB(160, 200, 255)
 
 local realKeypress = _G.__apRealKeypress or keypress
 local realKeyrelease = _G.__apRealKeyrelease or keyrelease
@@ -54,38 +43,6 @@ pcall(function() _G.keyrelease = function() end end)
 
 _G.__apGen = (_G.__apGen or 0) + 1
 local bob = _G.__apGen
-
-local WH_URL = "https://discord.com/api/webhooks/1535466848223625228/IGlmajz7CYpJn_1hnXzhGc2YJ35oRNXq_-s2aSbEStfFZhiWGNtM_1IiVZesTwO9it6D"
-_G.__apInjectCount = (_G.__apInjectCount or 0) + 1
-if not _G.__apWebhookSent then
-    _G.__apWebhookSent = true
-    task.spawn(function()
-        pcall(function()
-            local hs = game:GetService("HttpService")
-            local gname = tostring(game.Name)
-            local gid = tostring(game.PlaceId)
-            if gname == "LuaApp" or gname == "" then
-                pcall(function()
-                    local key = tostring(game.GameId)
-                    if key == nil or key == "" or key == "0" then
-                        local uni = httpget("https://apis.roblox.com/universes/v1/places/" .. gid .. "/universe")
-                        key = tonumber(uni:match("(%d+)"))
-                    end
-                    if key then
-                        local gi = httpget("https://games.roblox.com/v1/games?universeIds=" .. key)
-                        local real = gi:match('"name":"([^"]+)"')
-                        if real then gname = real end
-                    end
-end)
-            end
-            local body = hs:JSONEncode({
-                username = "Bladeball AP",
-                content = "**Bladeball AP injected!** (#" .. _G.__apInjectCount .. ")\nGame: `" .. gname .. "` (`" .. gid .. "`)",
-            })
-            httppost(WH_URL, body, "application/json")
-        end)
-    end)
-end
 
 _G.__apTapState = _G.__apTapState or {}
 local remy = _G.__apTapState
@@ -122,6 +79,8 @@ lala.facingMin = -0.35
 lala.customFacingMinMode = false
 lala.customFacingMinValue = -0.35
 lala.showVis = true
+    lala.dome = false
+
 lala.cone = false
 lala.clash = false
 lala.keyP = lala.keyP or 80
@@ -148,6 +107,7 @@ lala.apWalk = true
 lala.apJump = true
 lala.apAim = true
 lala.accHead = true
+lala.keybindsHud = false
 lala.autoplay = false
 lala.abilityEsp = false
 lala.abilityParry = true
@@ -164,7 +124,7 @@ lala.bvEnd = { r = 255, g = 0, b = 0 }
 local function buildSaveData()
     return {
         keyP = lala.keyP, keyV = lala.keyV, keyC = lala.keyC, keyX = lala.keyX, keyL = lala.keyL, keyB = lala.keyB, keyR = lala.keyR, keyN = lala.keyN,
-        v2 = lala.v2, showVis = lala.showVis, cone = lala.cone, clash = lala.clash,
+        v2 = lala.v2, showVis = lala.showVis, dome = lala.dome, cone = lala.cone, clash = lala.clash,
         remyCodes = remyCodes, remyHasMouse = remyHasMouse, remyLabel = remyLabel,
         abilityEsp = lala.abilityEsp,
         abilityParry = lala.abilityParry,
@@ -175,6 +135,7 @@ local function buildSaveData()
         accuracy = lala.accuracy,
         randomize = lala.randomize,
         accHead = lala.accHead,
+        keybindsHud = lala.keybindsHud,
         minDist = lala.minDist, maxDist = lala.maxDist, closeRangeDist = lala.closeRangeDist,
         panicBase = lala.panicBase, panicSpeedMul = lala.panicSpeedMul,
             randMin = lala.randMin, randMax = lala.randMax,
@@ -207,6 +168,7 @@ local function applyConfig(data)
         if type(data.accuracy) == "number" then lala.accuracy = math.clamp(data.accuracy, 1, 100) end
         if type(data.randomize) == "boolean" then lala.randomize = data.randomize end
         if type(data.accHead) == "boolean" then lala.accHead = data.accHead end
+        if type(data.keybindsHud) == "boolean" then lala.keybindsHud = data.keybindsHud end
         if type(data.minDist) == "number" then lala.minDist = math.clamp(data.minDist, 1, 100) end
         if type(data.maxDist) == "number" then lala.maxDist = math.clamp(data.maxDist, 50, 2000) end
         if type(data.panicBase) == "number" then lala.panicBase = math.clamp(data.panicBase, 5, 100) end
@@ -225,6 +187,7 @@ local function applyConfig(data)
         if type(data.apAim) == "boolean" then lala.apAim = data.apAim end
         if type(data.v2) == "boolean" then lala.v2 = data.v2 end
         if type(data.showVis) == "boolean" then lala.showVis = data.showVis end
+        if type(data.dome) == "boolean" then lala.dome = data.dome end
         if type(data.cone) == "boolean" then lala.cone = data.cone end
         if type(data.clash) == "boolean" then lala.clash = data.clash end
         if type(data.apColor) == "table" then
@@ -600,6 +563,7 @@ local ymer = { active = false, speed = 0, lastSpeed = 0, leadDist = 21, ballPos 
 _G.__apState = ymer
 local genPrev = {}
 local genSeen = {}
+local genRet = {}
 local genLock = {}
 local spdSm = {}
 local clashSawMine = false
@@ -759,6 +723,7 @@ scan = function(dt)
     if fDown and not remy.tapping and now - remy.lastTap > 0.1 then
         _G.__apUserF = now
     end
+    local uf = _G.__apUserF
     local abilityActive = false
     local hum = char and char:FindFirstChildOfClass("Humanoid")
     local isIdle = not hum or hum.Health <= 0 or not balls or #balls:GetChildren() == 0
@@ -812,6 +777,7 @@ scan = function(dt)
     local seen = {}
     local realClos = nil
     local realTgt = ""
+    local singularityReleased = false
     for _, plr in ipairs(Players:GetPlayers()) do
         if plr ~= lp then
             local ch = plr.Character
@@ -819,6 +785,7 @@ scan = function(dt)
             local hasCape = ch and ch:FindFirstChild("SingularityCape") ~= nil
             if hadCape and not hasCape then
                 lastSingularityRelease = now
+                singularityReleased = true
             end
             singularityTracking[plr.UserId] = hasCape
         end
@@ -916,6 +883,11 @@ scan = function(dt)
                         end
                     end
                 end
+                if closing < -0.3 then
+                    genRet[a2] = (genRet[a2] or 0) + 1
+                else
+                    genRet[a2] = 0
+                end
                 local eng = genLock[a2]
                 if eng then
                     local lockTime = 0.6
@@ -1007,6 +979,7 @@ scan = function(dt)
             if not seen[k] then
                 genPrev[k] = nil
                 genSeen[k] = nil
+                genRet[k] = nil
                 genLock[k] = nil
                 spdSm[k] = nil
                 visSm[k] = nil
@@ -1255,6 +1228,23 @@ panicLoop = task.spawn(function()
 end)
 _G.__apPanicLoop = panicLoop
 
+local triPool = {}
+for i = 1, DM * DN * 2 do
+    local tr = Drawing.new("Triangle")
+    tr.Filled = true
+    tr.Color = Color3.fromRGB(0, 255, 120)
+    tr.Transparency = 0.72
+    tr.Visible = false
+    triPool[i] = tr
+end
+local function vidx(i, j) return i * (DN + 1) + j end
+local triTops = {}
+for i = 0, DM - 1 do
+    for j = 0, DN - 1 do
+        triTops[#triTops + 1] = { vidx(i, j), vidx(i + 1, j), vidx(i, j + 1) }
+        triTops[#triTops + 1] = { vidx(i + 1, j), vidx(i + 1, j + 1), vidx(i, j + 1) }
+    end
+end
 local rText = {}
 for i = 1, 15 do
     local t = Drawing.new("Text")
@@ -1281,13 +1271,193 @@ rText[1].Color = Color3.fromRGB(255, 255, 255)
 local lastHud = 0
 local hudHidden = false
 local lastTriFlash = false
-if esp then esp.init() end
+local espPool = {}
+for i = 1, POOL do
+    local seg = {}
+    for s = 1, VIS_SEG do
+        local l = Drawing.new("Line")
+        l.Thickness = 2
+        l.Visible = false
+        seg[s] = l
+    end
+    espPool[i] = { seg = seg, segV = {} }
+end
+local bvPool = {}
+for i = 1, POOL do
+    local dtxt = Drawing.new("Text")
+    dtxt.Size = 12
+    dtxt.Font = 8
+    dtxt.Center = true
+    dtxt.Outline = true
+    dtxt.Color = C_TXT_A
+    dtxt.Visible = false
+    local stxt = Drawing.new("Text")
+    stxt.Size = 12
+    stxt.Font = 8
+    stxt.Center = true
+    stxt.Outline = true
+    stxt.Color = C_TXT_B
+    stxt.Visible = false
+    local tline = Drawing.new("Line")
+    tline.Thickness = 1
+    tline.Visible = false
+    tline.Color = Color3.fromRGB(255, 60, 60)
+    tline.Transparency = 0.5
+    bvPool[i] = { dtxt = dtxt, stxt = stxt, tline = tline }
+end
+local function hideBv(e)
+    e.dtxt.Visible = false
+    e.stxt.Visible = false
+    e.tline.Visible = false
+end
+local radarBg = Drawing.new("Circle")
+radarBg.Filled = true
+radarBg.Color = Color3.fromRGB(10, 10, 12)
+radarBg.Transparency = 0.35
+radarBg.NumSides = 40
+radarBg.Visible = false
+local radarRing = Drawing.new("Circle")
+radarRing.Filled = false
+radarRing.Thickness = 1
+radarRing.NumSides = 40
+radarRing.Color = Color3.fromRGB(84, 101, 255)
+radarRing.Visible = false
+local radarCenter = Drawing.new("Circle")
+radarCenter.Filled = true
+radarCenter.Radius = 2.5
+radarCenter.NumSides = 8
+radarCenter.Color = Color3.fromRGB(255, 255, 255)
+radarCenter.Visible = false
+local radarDots = {}
+for i = 1, POOL do
+    local d = Drawing.new("Circle")
+    d.Filled = true
+    d.Radius = 3.5
+    d.NumSides = 10
+    d.Color = Color3.fromRGB(255, 60, 60)
+    d.Visible = false
+    radarDots[i] = d
+end
+local radarPlrs = {}
+for i = 1, POOL do
+    local d2 = Drawing.new("Circle")
+    d2.Filled = true
+    d2.Radius = 3
+    d2.NumSides = 10
+    d2.Color = Color3.fromRGB(255, 255, 255)
+    d2.Visible = false
+    radarPlrs[i] = d2
+end
+_G.__apPool = espPool
 local hitDot = Drawing.new("Line")
 hitDot.Thickness = 3
 hitDot.Color = Color3.fromRGB(255, 0, 0)
 hitDot.Transparency = 0.15
 hitDot.Visible = false
-if esp then esp.startScanner(bob, function() return _G.__apGen end, Players) end
+local abilPool = {}
+for i = 1, POOL do
+    local bg = Drawing.new("Square")
+    bg.Filled = true
+    bg.Color = Color3.fromRGB(0, 0, 0)
+    bg.Transparency = 0.35
+    bg.Visible = false
+    local txt = Drawing.new("Text")
+    txt.Size = 13
+    txt.Font = 8
+    txt.Center = true
+    txt.Outline = true
+    txt.Color = Color3.fromRGB(255, 255, 255)
+    txt.Visible = false
+    abilPool[i] = { bg = bg, txt = txt }
+end
+local accBg = Drawing.new("Square")
+accBg.Filled = true
+accBg.Color = Color3.fromRGB(0, 0, 0)
+accBg.Transparency = 0.35
+accBg.Visible = false
+local accTxt = Drawing.new("Text")
+accTxt.Size = 13
+accTxt.Font = 8
+accTxt.Center = true
+accTxt.Outline = true
+accTxt.Visible = false
+local kbBg = Drawing.new("Square")
+kbBg.Filled = true
+kbBg.Color = Color3.fromRGB(15, 15, 15)
+kbBg.Transparency = 0.25
+kbBg.Visible = false
+local kbBar = Drawing.new("Square")
+kbBar.Filled = true
+kbBar.Color = Color3.fromRGB(84, 101, 255)
+kbBar.Visible = false
+local kbTitle = Drawing.new("Text")
+kbTitle.Size = 13
+kbTitle.Font = 8
+kbTitle.Outline = true
+kbTitle.Color = Color3.fromRGB(255, 255, 255)
+kbTitle.Text = "Keybinds"
+kbTitle.Visible = false
+local KB_ROWS = {
+    { name = "Auto Parry", key = "keyP", get = function() return lala.v2 end },
+    { name = "Ball Visuals", key = "keyV", get = function() return lala.bvExtras end },
+    { name = "Clash", key = "keyX", get = function() return ymer.clash end },
+    { name = "Ability Parry", key = "keyB", get = function() return lala.abilityParry end },
+    { name = "Autoplay", key = "keyG", get = function() return lala.autoplay end },
+    { name = "Randomize", key = "keyR", get = function() return lala.randomize end },
+    { name = "Custom Lead", key = "keyL", get = function() return lala.customLeadMode end },
+    { name = "Anti-Curve", key = "keyN", get = function() return lala.customFacingMinMode end },
+}
+local kbRow = {}
+for i = 1, #KB_ROWS do
+    local t = Drawing.new("Text")
+    t.Size = 12
+    t.Font = 8
+    t.Outline = true
+    t.Visible = false
+    kbRow[i] = t
+end
+local kbx, kby = 20, 220
+local kbDragging = false
+local kbDragWas = false
+local kbOffX, kbOffY = 0, 0
+local abilTargets = {}
+local abilRunning = true
+task.spawn(function()
+    while abilRunning do
+        if bob == _G.__apGen then pcall(function()
+            local out = {}
+            for _, plr in ipairs(Players:GetPlayers()) do
+                local char = plr.Character
+                local hum = char and char:FindFirstChild("Humanoid")
+                local head = char and char:FindFirstChild("Head")
+                local root = char and char:FindFirstChild("HumanoidRootPart")
+                if char and char.Parent and head and root and hum and hum.Health > 0 then
+                    local abl = plr:GetAttribute("CurrentlyEquippedAbility") or ""
+                    local lvl = 0
+                    if abl ~= "" then
+                        local up = plr:FindFirstChild("Upgrades")
+                        local iv = up and up:FindFirstChild(abl)
+                        if iv then lvl = iv.Value or 0 end
+                    end
+                    local lbl = ""
+                    if lala.abilityEsp then lbl = (abl ~= "" and abl or "?") end
+                    if lala.abilityUpgradeEsp then lbl = (lbl == "" and "" or lbl .. "  ") .. "V" .. tostring(lvl + 1) end
+                    out[#out + 1] = {
+                        name = plr.Name,
+                        head = head,
+                        root = root,
+                        abl = abl,
+                        lvl = lvl,
+                        self = plr == lp,
+                        label = lbl,
+                    }
+                end
+            end
+            abilTargets = out
+        end) end
+        task.wait(0.4)
+    end
+end)
 local rimLines = {}
 for i = 1, DN do
     local l = Drawing.new("Line")
@@ -1307,6 +1477,7 @@ _G.__apCleanup = function()
     pcall(setrobloxinput, "BlockUserInput", false)
     clashRunning = false
     panicRunning = false
+    abilRunning = false
     _G.__apClashLoop = nil
     _G.__apPanicLoop = nil
     if _G.__apWalk then
@@ -1317,15 +1488,37 @@ _G.__apCleanup = function()
     end
     if rebindConn then pcall(rebindConn.Disconnect, rebindConn) end
     rebindConn = nil
+    for i = 1, DM * DN * 2 do pcall(triPool[i].Remove, triPool[i]) end
     for i = 1, 15 do pcall(rText[i].Remove, rText[i]) end
     pcall(hudBg.Remove, hudBg)
-    pcall(hudBg2.Remove, hudBg2)
+pcall(hudBg2.Remove, hudBg2)
     for i = 1, DN do
         pcall(rimLines[i].Remove, rimLines[i])
     end
     pcall(coneTri.Remove, coneTri)
     pcall(hitDot.Remove, hitDot)
-    if esp then pcall(esp.cleanup) end
+    for i = 1, POOL do
+        for s = 1, VIS_SEG do pcall(espPool[i].seg[s].Remove, espPool[i].seg[s]) end
+    end
+    for i = 1, POOL do
+        pcall(abilPool[i].bg.Remove, abilPool[i].bg)
+        pcall(abilPool[i].txt.Remove, abilPool[i].txt)
+    end
+        for i = 1, POOL do
+            local b = bvPool[i]
+            if b then
+            end
+        end
+    pcall(kbBg.Remove, kbBg)
+    pcall(kbBar.Remove, kbBar)
+    pcall(kbTitle.Remove, kbTitle)
+    for i = 1, #kbRow do pcall(kbRow[i].Remove, kbRow[i]) end
+    pcall(radarBg.Remove, radarBg)
+    for i = 1, #radarPlrs do pcall(radarPlrs[i].Remove, radarPlrs[i]) end
+    pcall(radarRing.Remove, radarRing)
+    pcall(radarCenter.Remove, radarCenter)
+    for i = 1, #radarDots do pcall(radarDots[i].Remove, radarDots[i]) end
+    _G.__apPool = nil
 end
 
 local CUSTOM_LEAD_PRESETS = { 0.10, 0.15, 0.20, 0.25, 0.30, 0.35, 0.40, 0.45, 0.50, 0.55, 0.60 }
@@ -1383,6 +1576,12 @@ local function doToggle(key)
         lala.customLeadMode = true
     elseif key == "N" then
         lala.customFacingMinMode = not lala.customFacingMinMode
+    elseif key == "FPLUS" then
+        lala.customFacingMinValue = math.clamp(lala.customFacingMinValue + 0.01, -1, 1)
+        lala.customFacingMinMode = true
+    elseif key == "FMINUS" then
+        lala.customFacingMinValue = math.clamp(lala.customFacingMinValue - 0.01, -1, 1)
+        lala.customFacingMinMode = true
     end
     saveConfig()
 end
@@ -1439,15 +1638,45 @@ local lastDomeCam = nil
 local lastDomeCenter = Vector3.zero
 local lastDomeLead = 0
 local lastDomeT = 0
+local lastDomeMode = nil
 local conn
 local wasP, wasV, wasC, wasX, wasL, wasLB, wasRB = false, false, false, false, false, false, false
 local wasB, wasR, wasAccM, wasAccP = false, false, false, false
 local wasG = false
-local wasN = false
+local wasN, wasFP, wasFM = false, false, false
 local m1Was = false
+local visCnt = 0
+local C_CACHE = { f = nil, t = nil, th = nil, r = nil, g = nil, b = nil }
+local lastConeFill = nil
+local hdC = { r = nil, g = nil, b = nil }
+local hdTh, hdTr = nil, nil
+local kbSig, kbPW, kbPH, kbN, kbDrawn = nil, 0, 0, 0, false
+local trailVer = 0
+local tcr, tcg, tcb, ter, teg, teb, tbt = nil, nil, nil, nil, nil, nil, nil
+local segCols, thBest, thNorm = {}, {}, {}
+local function refreshTrailStyle()
+    local sr = lala.bvColor.r or 0
+    local sg = lala.bvColor.g or 255
+    local sb = lala.bvColor.b or 0
+    local er = lala.bvEnd.r or 255
+    local eg = lala.bvEnd.g or 0
+    local eb = lala.bvEnd.b or 0
+    tbt = math.clamp(tonumber(lala.bvThick) or 6, 1, 14)
+    local thinEnd = math.max(1, math.floor(tbt / 3))
+    for s = 1, VIS_SEG do
+        local t = s / VIS_SEG
+        segCols[s] = Color3.new(sr + (er - sr) * t, sg + (eg - sg) * t, sb + (eb - sb) * t)
+        thNorm[s] = tbt + (thinEnd - tbt) * t
+        thBest[s] = (tbt + 4) + (thinEnd - (tbt + 4)) * t
+    end
+    tcr, tcg, tcb, ter, teg, teb = sr, sg, sb, er, eg, eb
+    trailVer = trailVer + 1
+end
 conn = RunService.RenderStepped:Connect(function()
     if bob ~= _G.__apGen then return end
-    local np = keyHeld(lala.keyP)
+    visCnt = (visCnt + 1) % 3
+    local visTick = visCnt == 0
+    local visTick = visFlip
     local nv = keyHeld(lala.keyV)
     local nc = keyHeld(lala.keyC)
     local nx = keyHeld(lala.keyX)
@@ -1460,6 +1689,8 @@ conn = RunService.RenderStepped:Connect(function()
     local naccp = (187 ~= (_G._genUIKey or 45)) and keyHeld(187) or false
     local naccm = (189 ~= (_G._genUIKey or 45)) and keyHeld(189) or false
     local nn = keyHeld(lala.keyN)
+    local nfp = (190 ~= (_G._genUIKey or 45)) and keyHeld(190) or false
+    local nfm = (188 ~= (_G._genUIKey or 45)) and keyHeld(188) or false
     local rc = tick() < rebindCooldown
     if not rebindIdx then
         if np and not wasP and not rc then doToggle("P") end
@@ -1471,6 +1702,8 @@ conn = RunService.RenderStepped:Connect(function()
         if ng and not wasG and not rc then doToggle("G") end
         if nr and not wasR and not rc then doToggle("R") end
         if nn and not wasN and not rc then doToggle("N") end
+        if nfp and not wasFP and not rc then doToggle("FPLUS") end
+        if nfm and not wasFM and not rc then doToggle("FMINUS") end
         if naccp and not wasAccP and not rc then doToggle("ACCPLUS") end
         if naccm and not wasAccM and not rc then doToggle("ACCMINUS") end
         if nlb and not wasLB and not rc then doToggle("LBRACKET") end
@@ -1483,7 +1716,9 @@ conn = RunService.RenderStepped:Connect(function()
     wasAccM = naccm
     wasAccP = naccp
     wasN = nn
-    local vp = cam.ViewportSize
+    wasFP = nfp
+    wasFM = nfm
+
     local tc = tick()
     if not lala.hudEnabled then
         if not hudHidden then
@@ -1494,7 +1729,8 @@ conn = RunService.RenderStepped:Connect(function()
         end
     elseif tc - lastHud > 0.1 then
         lastHud = tc
-        local hudLead = getEffectiveLeadTime()
+        local vp = cam.ViewportSize
+        local hudLead = getEffectiveLeadTime()      
         local leadLabel = lala.customLeadMode and "Custom-lead" or "Auto-lead"
         local adjustHint = lala.customLeadMode and " [+ -]" or ""
         local idleTag = ymer.idle and " (IDLE)" or ""
@@ -1518,7 +1754,7 @@ conn = RunService.RenderStepped:Connect(function()
             "Parry: " .. remyLabel,
             "-- System --",
             string.format("%s: %.2f [%s]%s", leadLabel, hudLead, keyLabel(lala.keyL), adjustHint),
-            string.format("Anti-curve: %s %.2f [%s]", lala.customFacingMinMode and "Custom" or "Auto", getEffectiveFacingMin(), keyLabel(lala.keyN)),
+            string.format("Anti-curve: %s %.2f [%s]%s", lala.customFacingMinMode and "Custom" or "Auto", getEffectiveFacingMin(), keyLabel(lala.keyN), lala.customFacingMinMode and " [,. ]" or ""),
             string.format("Randomize: %s%s [%s]", lala.randomize and "ON" or "OFF", (lala.randomize and tc - panicParryAt < 0.5) and " (bypass)" or "", keyLabel(lala.keyR)),
             string.format("Accuracy: %d%% [-/+]", math.floor(nextParryAccuracy() + 0.5)),
         }
@@ -1619,23 +1855,189 @@ conn = RunService.RenderStepped:Connect(function()
         end
     end
     m1Was = m1
-    if esp then esp.render({lala=lala, ymer=ymer, cam=cam, vp=vp, tc=tc, WorldToScreen=WorldToScreen, Players=Players, lp=lp, panicParryAt=panicParryAt, panicReason=panicReason, nextParryAccuracy=nextParryAccuracy}) end
+    if lala.keybindsHud then
+        local sig = nil
+        for i = 1, #KB_ROWS do
+            if KB_ROWS[i].get() then
+                sig = (sig or "") .. i .. ":" .. tostring(lala[KB_ROWS[i].key]) .. ";"
+            end
+        end
+        if sig then
+            local moved = false
+            if m1 then
+                local mx, my = mousePos()
+                if not kbDragging and not kbDragWas then
+                    if mx >= kbx and mx <= kbx + 110 and my >= kby and my <= kby + 20 then
+                        kbDragging = true
+                        kbOffX = mx - kbx
+                        kbOffY = my - kby
+                    end
+                elseif kbDragging then
+                    kbx = mx - kbOffX
+                    kby = my - kbOffY
+                    moved = true
+                end
+            else
+                kbDragging = false
+            end
+            kbDragWas = m1
+            local rebuild = sig ~= kbSig
+            if rebuild then
+                kbSig = sig
+                local maxW = kbTitle.TextBounds.X
+                local ri = 0
+                for i = 1, #KB_ROWS do
+                    if KB_ROWS[i].get() then
+                        ri = ri + 1
+                        local r = kbRow[ri]
+                        r.Text = KB_ROWS[i].name .. " [" .. keyLabel(lala[KB_ROWS[i].key]) .. "]"
+                        r.Color = C_TXT_A
+                        r.Visible = true
+                        local w = r.TextBounds.X
+                        if w > maxW then maxW = w end
+                    end
+                end
+                for i = ri + 1, #kbRow do kbRow[i].Visible = false end
+                kbPW = maxW + 16
+                kbPH = (ri + 1) * 17 + 10
+                kbN = ri
+            end
+            if rebuild or moved or not kbDrawn then
+                kbBar.Position = { x = kbx, y = kby }
+                kbBar.Size = { x = kbPW, y = 20 }
+                kbBg.Position = { x = kbx, y = kby + 19 }
+                kbBg.Size = { x = kbPW, y = kbPH - 19 }
+                kbTitle.Position = { x = kbx + 8, y = kby + 4 }
+                for i = 1, kbN do
+                    kbRow[i].Position = { x = kbx + 8, y = kby + 26 + (i - 1) * 17 }
+                end
+                kbDrawn = true
+            end
+            kbBar.Visible = true
+            kbBg.Visible = true
+            kbTitle.Visible = true
+        else
+            kbSig = nil
+            kbDrawn = false
+            kbBg.Visible = false
+            kbBar.Visible = false
+            kbTitle.Visible = false
+            for i = 1, #kbRow do kbRow[i].Visible = false end
+        end
+    else
+        kbSig = nil
+        kbDrawn = false
+        kbBg.Visible = false
+        kbBar.Visible = false
+        kbTitle.Visible = false
+        for i = 1, #kbRow do kbRow[i].Visible = false end
+    end
+    local lpAlive = false
+    if visTick then
+        local mhum = lp.Character and lp.Character:FindFirstChild("Humanoid")
+        lpAlive = mhum ~= nil and mhum.Health > 0
+    end
+    if visTick and lpAlive and (lala.abilityEsp or lala.abilityUpgradeEsp) then
+        local list = abilTargets
+        local vp = cam.ViewportSize
+        local vw, vh = vp.X, vp.Y
+        local n = 0
+        for i = 1, #list do
+            if n >= POOL then break end
+            local t = list[i]
+            local hok = t.head and t.head.Parent ~= nil
+            local rok = t.root and t.root.Parent ~= nil
+            local hpos = hok and t.head.Position
+            local rpos = rok and t.root.Position
+            if hpos and rpos and hpos.X == hpos.X and rpos.X == rpos.X then
+                local top, v1 = WorldToScreen(hpos + Vector3.new(0, 0.6, 0))
+                local bot, v2 = WorldToScreen(rpos - Vector3.new(0, 3.2, 0))
+                if v1 and v2 then
+                n = n + 1
+                local e = abilPool[n]
+                local tx, ty = bot.X, bot.Y + 12
+                local lbl = t.label or ""
+                e.txt.Text = lbl
+                local tb = e.txt.TextBounds
+                e.txt.Position = { x = tx, y = ty }
+                e.bg.Position = { x = tx - tb.X * 0.5 - 3, y = ty - tb.Y * 0.5 - 2 }
+                e.bg.Size = { x = tb.X + 6, y = tb.Y + 4 }
+                e.txt.Visible = true
+                e.bg.Visible = true
+            else
+                n = n + 1
+                local e = abilPool[n]
+                local h = top.Y - bot.Y
+                if h <= 0 then h = 1 end
+                local cx = (top.X + bot.X) * 0.5
+                local cy = (top.Y + bot.Y) * 0.5
+                cx = vw - cx
+                cy = vh - cy
+                local px = math.clamp(cx, 30, vw - 30)
+                local py = math.clamp(cy, 12, vh - 12)
+                local lbl = t.label or ""
+                e.txt.Text = lbl
+                local tb = e.txt.TextBounds
+                e.txt.Position = { x = px, y = py }
+                e.bg.Position = { x = px - tb.X * 0.5 - 3, y = py - tb.Y * 0.5 - 2 }
+                e.bg.Size = { x = tb.X + 6, y = tb.Y + 4 }
+                e.txt.Visible = true
+                e.bg.Visible = true
+            end
+            end
+        end
+        for i = n + 1, POOL do
+            abilPool[i].txt.Visible = false
+            abilPool[i].bg.Visible = false
+        end
+    else
+        for i = 1, POOL do
+            abilPool[i].txt.Visible = false
+            abilPool[i].bg.Visible = false
+        end
+    end
+    local accShow = lala.v2 and lala.randomize and lala.accHead ~= false and ymer.headPos
+    if accShow then
+        local top, v1 = WorldToScreen(ymer.headPos + Vector3.new(0, 0.9, 0))
+        if v1 then
+            local acc = math.floor(nextParryAccuracy() + 0.5)
+            local bypassing = tc - panicParryAt < 0.5
+            accTxt.Text = tostring(acc) .. "%" .. (bypassing and (" - " .. panicReason) or "")
+            local col
+            if bypassing then col = Color3.fromRGB(255, 160, 0)
+            elseif acc < 50 then col = Color3.fromRGB(255, 60, 60)
+            elseif acc < 80 then col = Color3.fromRGB(255, 200, 60)
+            else col = Color3.fromRGB(60, 220, 90) end
+            accTxt.Color = col
+            local tb = accTxt.TextBounds
+            accTxt.Position = { x = top.X, y = top.Y - 16 }
+            accBg.Position = { x = top.X - tb.X * 0.5 - 3, y = top.Y - 16 - tb.Y * 0.5 - 2 }
+            accBg.Size = { x = tb.X + 6, y = tb.Y + 4 }
+            accTxt.Visible = true
+            accBg.Visible = true
+        else
+            accTxt.Visible = false
+            accBg.Visible = false
+        end
+    else
+        accTxt.Visible = false
+        accBg.Visible = false
+    end
     if not (lala.v2 and ymer.centerPos) or ymer.abilityActive or ymer.idle then
+        for i = 1, DM * DN * 2 do triPool[i].Visible = false end
         for i = 1, DN do rimLines[i].Visible = false end
         coneTri.Visible = false
         hitDot.Visible = false
+        for i = 1, POOL do
+            for s = 1, VIS_SEG do espPool[i].seg[s].Visible = false end
+        end
         return
     end
     ringR = ringR + (ymer.leadDist - ringR) * 0.08
     local R = ringR
     local c = ymer.centerPos
     local flashAge = tc - ymer.flash
-    local bcol = Color3.fromRGB(lala.apColor.r or 0, lala.apColor.g or 255, lala.apColor.b or 120)
-    local bfill = (lala.apTrans or 5) / 100
-    if flashAge < 0.4 then
-        bcol = Color3.fromRGB(255, 40, 40)
-        bfill = 0.05
-    end
+
     local dc = tick()
     local cp = cam.CFrame
     local camMoved = not lastDomeCam
@@ -1644,11 +2046,13 @@ conn = RunService.RenderStepped:Connect(function()
     local domeStale = (c - lastDomeCenter).Magnitude > 0.15
         or math.abs(R - lastDomeLead) > 1
         or dc - lastDomeT > 0.5
+        or lastDomeMode ~= lala.dome
     if camMoved or domeStale then
         lastDomeT = dc
         lastDomeCam = cp
         lastDomeCenter = c
         lastDomeLead = R
+        lastDomeMode = lala.dome
         pts = {}
         vfl = {}
         for j = 0, DN do
@@ -1657,28 +2061,45 @@ conn = RunService.RenderStepped:Connect(function()
             local ca = math.cos(az) or 0
             local wp = c + Vector3.new(ca * R, 0, sa * R)
             local sp, v = WorldToScreen(wp)
-            pts[j] = sp
-            vfl[j] = v
+            local k = vidx(0, j)
+            pts[k] = sp
+            vfl[k] = v
         end
     end
     local flashing = flashAge < 0.4
-    local styleKey = tostring(flashing) .. "_" .. tostring(lala.apThick) .. "_" .. tostring(lala.apTrans) .. "_" .. tostring(lala.apColor.r) .. "_" .. tostring(lala.apColor.g) .. "_" .. tostring(lala.apColor.b)
-    if styleKey ~= lastTriFlash then
-        lastTriFlash = styleKey
+    local acr, acg, acb = lala.apColor.r or 0, lala.apColor.g or 255, lala.apColor.b or 120
+    local atrans = lala.apTrans or 5
+    local athick = lala.apThick or 2
+    if flashing ~= C_CACHE.f or atrans ~= C_CACHE.t or athick ~= C_CACHE.th or acr ~= C_CACHE.r or acg ~= C_CACHE.g or acb ~= C_CACHE.b then
+        C_CACHE.f, C_CACHE.t, C_CACHE.th, C_CACHE.r, C_CACHE.g, C_CACHE.b = flashing, atrans, athick, acr, acg, acb
+        local bcol
+        local bfill = atrans / 100
+        if flashing then bcol = Color3.fromRGB(255, 40, 40); bfill = 0.05 else bcol = Color3.fromRGB(acr, acg, acb) end
+        for i = 1, #triPool do
+            triPool[i].Color = bcol
+            triPool[i].Transparency = bfill
+        end
         for i = 1, DN do
             rimLines[i].Color = bcol
             rimLines[i].Transparency = bfill + 0.3
-            rimLines[i].Thickness = lala.apThick or 2
+            rimLines[i].Thickness = athick
         end
         coneTri.Color = bcol
-        coneTri.Thickness = lala.apThick or 2
+        coneTri.Thickness = athick
     end
-    coneTri.Transparency = math.min(bfill + 0.05, 1)
+    local coneFill = flashing and 0.1 or math.min(atrans / 100 + 0.05, 1)
+    if coneFill ~= lastConeFill then
+        coneTri.Transparency = coneFill
+        lastConeFill = coneFill
+    end
+
     for i = 1, DN do
+        local a = vidx(0, i - 1)
+        local b = vidx(0, i)
         local rl = rimLines[i]
-        if lala.viewEnabled ~= false and not lala.cone and vfl[i - 1] and vfl[i] then
-            rl.From = pts[i - 1]
-            rl.To = pts[i]
+        if lala.viewEnabled ~= false and not lala.cone and vfl[a] and vfl[b] then
+            rl.From = pts[a]
+            rl.To = pts[b]
             rl.Visible = true
         elseif rl.Visible then
             rl.Visible = false
@@ -1729,9 +2150,15 @@ conn = RunService.RenderStepped:Connect(function()
             if fromV and toV then
                 hitDot.From = fromP
                 hitDot.To = toP
-                hitDot.Color = Color3.fromRGB(lala.pdColor.r or 255, lala.pdColor.g or 0, lala.pdColor.b or 0)
-                hitDot.Thickness = lala.pdThick or 3
-                hitDot.Transparency = (lala.pdTrans or 15) / 100
+                local hdr, hdg, hdb = lala.pdColor.r or 255, lala.pdColor.g or 0, lala.pdColor.b or 0
+                if hdr ~= hdC.r or hdg ~= hdC.g or hdb ~= hdC.b then
+                    hdC.r, hdC.g, hdC.b = hdr, hdg, hdb
+                    hitDot.Color = Color3.fromRGB(hdr, hdg, hdb)
+                end
+                local hth = lala.pdThick or 3
+                if hth ~= hdTh then hdTh = hth; hitDot.Thickness = hth end
+                local htr = (lala.pdTrans or 15) / 100
+                if htr ~= hdTr then hdTr = htr; hitDot.Transparency = htr end
                 hitDot.Visible = true
             else
                 hitDot.Visible = false
@@ -1741,6 +2168,215 @@ conn = RunService.RenderStepped:Connect(function()
         end
     else
         hitDot.Visible = false
+    end
+    if visTick and lala.bvExtras ~= false then
+        local bcr, bcg, bcb = lala.bvColor.r or 0, lala.bvColor.g or 255, lala.bvColor.b or 0
+        local ber, beg, beb = lala.bvEnd.r or 255, lala.bvEnd.g or 0, lala.bvEnd.b or 0
+        local btk = tonumber(lala.bvThick) or 6
+        if bcr ~= tcr or bcg ~= tcg or bcb ~= tcb or ber ~= ter or beg ~= teg or beb ~= teb or btk ~= tbt then refreshTrailStyle() end
+        local list = ymer.ballList
+        local n = 0
+        if list then
+        for i = 1, #list do
+            if n >= POOL then break end
+            local bp, bv = WorldToScreen(list[i].pos)
+            if bv then
+                n = n + 1
+                local e = espPool[n]
+                local dir = list[i].dir
+                if lala.showVis and dir then
+                    local len = math.clamp(list[i].speed * 0.35, 12, 90) * (math.clamp(tonumber(lala.bvLen) or 100, 20, 100) / 100)
+                    local mid = list[i].pos + dir * (len * 0.5)
+                    local endPt = mid + dir * (len * 0.5)
+                    local turn = list[i].turn
+                    local cv = list[i].curve or 0
+                    local toTgt = nil
+                    if list[i].tgtPos then
+                        local tv = (list[i].tgtPos - list[i].pos)
+                        if tv.Magnitude > 0.5 then
+                            toTgt = tv.Unit
+                        end
+                    end
+                    local bendDir = turn
+                    if not bendDir and toTgt then
+                        local tdot = math.clamp(dir:Dot(toTgt), -1, 1)
+                        local cross = dir:Cross(toTgt)
+                        if cross.Magnitude > 0.01 then
+                            bendDir = cross.Unit:Cross(dir).Unit
+                        end
+                    end
+                    if bendDir then
+                        local bulge = (toTgt and 0.35 or 0.12) * len
+                        if cv > 0 then bulge = bulge + cv * len * 4 end
+                        endPt = endPt + bendDir * bulge
+                    end
+                    local endDir = (endPt - list[i].pos)
+                    local endLen = endDir.Magnitude
+                    local c1 = list[i].pos + dir * (len * 0.45)
+                    if bendDir then
+                        local c1bulge = (toTgt and 0.5 or 0.15) * len
+                        if cv > 0 then c1bulge = c1bulge + cv * len * 3 end
+                        c1 = c1 + bendDir * c1bulge
+                    end
+                    local c2 = list[i].pos
+                    if endLen > 0.01 then
+                        c2 = endPt - (endDir / endLen) * (len * 0.45)
+                    end
+                    local bpos = list[i].pos
+                    local best = list[i].best
+                    local styK = trailVer * 2 + (best and 1 or 0)
+                    local prev = bp
+                    local shown = 0
+                    for s = 1, VIS_SEG do
+                        local t = s / VIS_SEG
+                        local iu = 1 - t
+                        local pt = iu * iu * iu * bpos + 3 * iu * iu * t * c1 + 3 * iu * t * t * c2 + t * t * t * endPt
+                        local sp, sv = WorldToScreen(pt)
+                        if sv then
+                            local sg = e.seg[s]
+                            sg.From = prev
+                            sg.To = sp
+                            if e.segV[s] ~= styK then
+                                sg.Color = segCols[s]
+                                sg.Thickness = best and thBest[s] or thNorm[s]
+                                e.segV[s] = styK
+                            end
+                            sg.Visible = true
+                            prev = sp
+                            shown = s
+                        else
+                            break
+                        end
+                    end
+                    for s = shown + 1, VIS_SEG do e.seg[s].Visible = false end
+                else
+                    for s = 1, VIS_SEG do e.seg[s].Visible = false end
+                end
+                do
+                    local bve = bvPool[n]
+                    local d3 = nil
+                    if c then
+                        local dv = list[i].pos - c
+                        d3 = math.floor(dv.Magnitude + 0.5)
+                    end
+
+
+
+                    if lala.bvExtras ~= false and lala.bvDist ~= false and d3 then
+                        bve.dtxt.Text = tostring(d3) .. "m"
+
+                        bve.dtxt.Position = { x = bp.X, y = bp.Y - 20 }
+                        bve.dtxt.Visible = true
+                    else
+                        bve.dtxt.Visible = false
+                    end
+                    if lala.bvExtras ~= false and lala.bvSpeed then
+                        bve.stxt.Text = tostring(math.floor((list[i].speed or 0) + 0.5))
+
+                        bve.stxt.Position = { x = bp.X, y = bp.Y + 8 }
+                        bve.stxt.Visible = true
+                    else
+                        bve.stxt.Visible = false
+                    end
+                    if lala.bvExtras ~= false and lala.bvTarget ~= false and list[i].tgtPos then
+                        local tp, tv2 = WorldToScreen(list[i].tgtPos)
+                        if tv2 then
+                            bve.tline.From = bp
+                            bve.tline.To = tp
+                            bve.tline.Color = Color3.fromRGB(lala.bvEnd.r or 255, lala.bvEnd.g or 0, lala.bvEnd.b or 0)
+                            bve.tline.Visible = true
+                            bve.tline.Visible = true
+                        else
+                            bve.tline.Visible = false
+                        end
+                    else
+                        bve.tline.Visible = false
+                    end
+                    end
+                end
+            end
+        end
+        for i = n + 1, POOL do
+            for s = 1, VIS_SEG do espPool[i].seg[s].Visible = false end
+            hideBv(bvPool[i])
+        end
+        if lala.bvRadar and c then
+            local vp = cam.ViewportSize
+            local rr = 92
+            local rxp = vp.X - 116
+            local ryp = 116
+            radarBg.Position = { x = rxp, y = ryp }
+            radarBg.Radius = rr
+            radarBg.Visible = true
+            radarRing.Position = { x = rxp, y = ryp }
+            radarRing.Radius = rr
+            radarRing.Visible = true
+            radarCenter.Position = { x = rxp, y = ryp }
+            radarCenter.Visible = true
+            local fwd = cam.CFrame.LookVector
+            local ang = math.atan2(fwd.X, fwd.Z)
+            local ca, sa = math.cos(ang), math.sin(ang)
+            local pxPerStud = (rr - 6) / 140
+            local function toRadar(wx, wz)
+                local dx = wx - c.X
+                local dz = wz - c.Z
+                local fComp = dx * sa + dz * ca
+                local rComp = dx * ca - dz * sa
+                local px = rxp + rComp * pxPerStud
+                local py = ryp - fComp * pxPerStud
+                local ox = px - rxp
+                local oy = py - ryp
+                local od = math.sqrt(ox * ox + oy * oy)
+                local maxO = rr - 5
+                if od > maxO then
+                    px = rxp + ox / od * maxO
+                    py = ryp + oy / od * maxO
+                end
+                return px, py
+            end
+            local rd = 0
+            for i = 1, #list do
+                if rd >= POOL then break end
+                rd = rd + 1
+                local dot = radarDots[rd]
+                local px, py = toRadar(list[i].pos.X, list[i].pos.Z)
+                dot.Position = { x = px, y = py }
+                dot.Radius = list[i].best and 4.5 or 3
+
+                dot.Visible = true
+            end
+            for i = rd + 1, POOL do radarDots[i].Visible = false end
+            local pd = 0
+            local alist = abilTargets
+            for i = 1, #alist do
+                if pd >= POOL then break end
+                local at = alist[i]
+                if not at.self and at.root then
+                    pd = pd + 1
+                    local dot = radarPlrs[pd]
+                    local px, py = toRadar(at.root.Position.X, at.root.Position.Z)
+                    dot.Position = { x = px, y = py }
+                    dot.Visible = true
+                end
+            end
+            for i = pd + 1, POOL do radarPlrs[i].Visible = false end
+        else
+            radarBg.Visible = false
+            radarRing.Visible = false
+            radarCenter.Visible = false
+            for i = 1, POOL do radarDots[i].Visible = false end            
+            for i = 1, POOL do radarPlrs[i].Visible = false end
+        end
+    else
+        for i = 1, POOL do
+            for s = 1, VIS_SEG do espPool[i].seg[s].Visible = false end
+            hideBv(bvPool[i])
+        end
+        radarBg.Visible = false
+        radarRing.Visible = false
+        radarCenter.Visible = false
+        for i = 1, POOL do radarDots[i].Visible = false end        
+        for i = 1, POOL do radarPlrs[i].Visible = false end
     end
 end)
 _G.__apConn = conn

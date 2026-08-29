@@ -54,6 +54,23 @@ local PRESETS = {
     { "Black", Color3.fromRGB(10, 10, 10) },
     { "Pink", Color3.fromRGB(255, 150, 200) },
 }
+local AP_PRESETS = {
+    { "White", Color3.fromRGB(255, 255, 255) },
+    { "Red", Color3.fromRGB(255, 60, 60) },
+    { "Black", Color3.fromRGB(10, 10, 10) },
+    { "Pink", Color3.fromRGB(255, 150, 200) },
+    { "Orange", Color3.fromRGB(255, 165, 0) },
+    { "Yellow", Color3.fromRGB(255, 255, 0) },
+    { "Lime", Color3.fromRGB(50, 255, 50) },
+    { "Cyan", Color3.fromRGB(0, 255, 255) },
+    { "Light Blue", Color3.fromRGB(80, 160, 255) },
+    { "Blue", Color3.fromRGB(0, 120, 255) },
+    { "Purple", Color3.fromRGB(150, 80, 255) },
+    { "Magenta", Color3.fromRGB(255, 0, 255) },
+    { "Gold", Color3.fromRGB(255, 215, 0) },
+    { "Teal", Color3.fromRGB(0, 200, 180) },
+    { "Green", Color3.fromRGB(0, 200, 80) },
+}
 
 local allD = {}
 local baseTs = {}
@@ -1369,9 +1386,10 @@ local function handleClick(mx, my)
                                 return true
                             end
                             if el.cl and inRect(mx, my, el.cl.rect.x, el.cl.rect.y, el.cl.rect.w, el.cl.rect.h) then
-                                openPopup = { kind = "color", owner = el.cl, x = r.x + r.w - 55, y = r.y, h = #PRESETS * 20, rows = {} }
+                                local list = el.cl.isAccent and PRESETS or AP_PRESETS
+                                openPopup = { kind = "color", owner = el.cl, x = r.x + r.w - 55, y = r.y, h = #list * 20, rows = {} }
                                 local cur = el.cl.value.Color
-                                for i, pr in ipairs(PRESETS) do
+                                for i, pr in ipairs(list) do
                                     local m = math.abs(cur.R - pr[2].R) < 0.01 and math.abs(cur.G - pr[2].G) < 0.01 and math.abs(cur.B - pr[2].B) < 0.01
                                     openPopup.rows[i] = { txt = pr[1], color = pr[2], sel = m }
                                 end
@@ -1556,7 +1574,6 @@ conn = RunService.RenderStepped:Connect(function()
         end
         if not m1 then winDrag = false end
         end
-
         winBg.Visible = true
         winBd.Visible = true
         for _, seg in ipairs(titleSepSegs) do seg.Visible = true end
@@ -2046,6 +2063,7 @@ lala.keyR = lala.keyR or 82
 lala.keyN = lala.keyN or 78
 lala.keyG = lala.keyG or 71
 lala.keyT = lala.keyT or 84
+lala.keySmart = lala.keySmart or 77
 lala.accuracy = 100
 lala.randomize = false
 lala.randMin = 20
@@ -2057,8 +2075,6 @@ lala.bvSpeed = false
 lala.bvTarget = true
 lala.bvRadar = false
 lala.bvExtras = true
-lala.dribbleParry = true
-lala.dribbleVis = true
 lala.infinityAvoid = true
 lala.apWalk = true
 lala.apJump = true
@@ -2068,6 +2084,7 @@ lala.keybindsHud = false
 lala.autoplay = false
 lala.abilityEsp = false
 lala.abilityParry = true
+lala.smartParry = false
 lala.triggerbot = false
 lala.triggerOnce = false
 lala.hudEnabled = false
@@ -2082,13 +2099,14 @@ lala.bvEnd = { r = 255, g = 0, b = 0 }
 
 local function buildSaveData()
     return {
-        keyP = lala.keyP, keyV = lala.keyV, keyC = lala.keyC, keyX = lala.keyX, keyL = lala.keyL, keyB = lala.keyB, keyR = lala.keyR, keyN = lala.keyN,
+        keyP = lala.keyP or 0, keyV = lala.keyV or 0, keyC = lala.keyC or 0, keyX = lala.keyX or 0, keyL = lala.keyL or 0, keyB = lala.keyB or 0, keyR = lala.keyR or 0, keyN = lala.keyN or 0,
         v2 = lala.v2, showVis = lala.showVis, dome = lala.dome, cone = lala.cone, clash = lala.clash,
         triggerbot = lala.triggerbot,
         triggerOnce = lala.triggerOnce,
         remyCodes = remyCodes, remyHasMouse = remyHasMouse, remyLabel = remyLabel,
         abilityEsp = lala.abilityEsp,
         abilityParry = lala.abilityParry,
+        smartParry = lala.smartParry,
         hudEnabled = lala.hudEnabled,
         customLeadMode = lala.customLeadMode,
         customLeadValue = lala.customLeadValue,
@@ -2103,14 +2121,13 @@ local function buildSaveData()
             randMin = lala.randMin, randMax = lala.randMax,
         bvLen = lala.bvLen, bvThick = lala.bvThick,
             bvExtras = lala.bvExtras, bvRadar = lala.bvRadar,
-        dribbleParry = lala.dribbleParry,
-        dribbleVis = lala.dribbleVis,
         infinityAvoid = lala.infinityAvoid,
         singularityDetect = lala.singularityDetect,
         apWalk = lala.apWalk, apJump = lala.apJump, apAim = lala.apAim,
         autoplay = lala.autoplay,
-        keyG = lala.keyG,
-        keyT = lala.keyT,
+        keyG = lala.keyG or 0,
+        keyT = lala.keyT or 0,
+        keySmart = lala.keySmart or 0,
         apColor = lala.apColor, apThick = lala.apThick, apTrans = lala.apTrans,
         pdColor = lala.pdColor, pdThick = lala.pdThick, pdTrans = lala.pdTrans,
         bvColor = lala.bvColor, bvEnd = lala.bvEnd,
@@ -2125,13 +2142,13 @@ end
 
 local function applyConfig(data)
     if type(data) ~= "table" then return end
-        if type(data.keyP) == "number" then lala.keyP = data.keyP end
-        if type(data.keyV) == "number" then lala.keyV = data.keyV end
-        if type(data.keyC) == "number" then lala.keyC = data.keyC end
-        if type(data.keyX) == "number" then lala.keyX = data.keyX end
-        if type(data.keyL) == "number" then lala.keyL = data.keyL end
-        if type(data.keyB) == "number" then lala.keyB = data.keyB end
-        if type(data.keyR) == "number" then lala.keyR = data.keyR end
+        if data.keyP ~= nil then lala.keyP = data.keyP == 0 and nil or data.keyP end
+        if data.keyV ~= nil then lala.keyV = data.keyV == 0 and nil or data.keyV end
+        if data.keyC ~= nil then lala.keyC = data.keyC == 0 and nil or data.keyC end
+        if data.keyX ~= nil then lala.keyX = data.keyX == 0 and nil or data.keyX end
+        if data.keyL ~= nil then lala.keyL = data.keyL == 0 and nil or data.keyL end
+        if data.keyB ~= nil then lala.keyB = data.keyB == 0 and nil or data.keyB end
+        if data.keyR ~= nil then lala.keyR = data.keyR == 0 and nil or data.keyR end
         if type(data.accuracy) == "number" then lala.accuracy = math.clamp(data.accuracy, 1, 100) end
         if type(data.randomize) == "boolean" then lala.randomize = data.randomize end
         if type(data.accHead) == "boolean" then lala.accHead = data.accHead end
@@ -2149,8 +2166,6 @@ local function applyConfig(data)
         if type(data.bvTarget) == "boolean" then lala.bvTarget = data.bvTarget end
         if type(data.bvExtras) == "boolean" then lala.bvExtras = data.bvExtras end
         if type(data.bvRadar) == "boolean" then lala.bvRadar = data.bvRadar end
-        if type(data.dribbleParry) == "boolean" then lala.dribbleParry = data.dribbleParry end
-        if type(data.dribbleVis) == "boolean" then lala.dribbleVis = data.dribbleVis end
         if type(data.infinityAvoid) == "boolean" then lala.infinityAvoid = data.infinityAvoid end
         if type(data.singularityDetect) == "boolean" then lala.singularityDetect = data.singularityDetect end
         if type(data.apWalk) == "boolean" then lala.apWalk = data.apWalk end
@@ -2189,16 +2204,20 @@ local function applyConfig(data)
         if type(data.remyLabel) == "string" then remyLabel = data.remyLabel end
         if type(data.abilityEsp) == "boolean" then lala.abilityEsp = data.abilityEsp end
         if type(data.abilityParry) == "boolean" then lala.abilityParry = data.abilityParry end
+        if type(data.smartParry) == "boolean" then lala.smartParry = data.smartParry end
         if type(data.customLeadMode) == "boolean" then lala.customLeadMode = data.customLeadMode end
         if type(data.customLeadValue) == "number" then lala.customLeadValue = data.customLeadValue end
-        if type(data.keyN) == "number" then lala.keyN = data.keyN end
-        if type(data.keyG) == "number" then lala.keyG = data.keyG end
+        if data.keyN ~= nil then lala.keyN = data.keyN == 0 and nil or data.keyN end
+        if data.keyG ~= nil then lala.keyG = data.keyG == 0 and nil or data.keyG end
         if type(data.customFacingMinMode) == "boolean" then lala.customFacingMinMode = data.customFacingMinMode end
         if type(data.customFacingMinValue) == "number" then lala.customFacingMinValue = math.clamp(data.customFacingMinValue, -1, 1) end
         if type(data.autoplay) == "boolean" then lala.autoplay = data.autoplay end
         if type(data.triggerbot) == "boolean" then lala.triggerbot = data.triggerbot end
         if type(data.triggerOnce) == "boolean" then lala.triggerOnce = data.triggerOnce end
-        if type(data.keyT) == "number" then lala.keyT = data.keyT end
+        if data.keyT ~= nil then lala.keyT = data.keyT == 0 and nil or data.keyT end
+        if data.keySmart ~= nil then lala.keySmart = data.keySmart == 0 and nil or data.keySmart end
+        if type(data.keySmart) == "number" then lala.keySmart = data.keySmart end
+        if data.keySmart == nil then lala.keySmart = nil end
 end
 
 local function loadConfig()
@@ -2258,11 +2277,13 @@ lala.abilityKey = 81
 local TOGGLE_NAMES = { "P", "V", "C", "X", "B", "L", "R", "N", "G" }
 local TOGGLE_LINES = { 2, 3, 5, 4, 8, 13, 15, 14, 9 }
 local function keyHeld(k)
+    if not k then return false end
     if iskeypressed(k) then return true end
     if k >= 65 and k <= 90 and iskeypressed(k + 32) then return true end
     return false
 end
 local function keyLabel(k)
+    if not k then return "NONE" end
     if k >= 65 and k <= 90 then return string.char(k) end
     if k >= 48 and k <= 57 then return string.char(k) end
     return "K" .. tostring(k)
@@ -2495,6 +2516,18 @@ do
                 pcall(function()
                     local balls = workspace:FindFirstChild("Balls")
                     if not balls then fired = false return end
+                    local ch2 = lp.Character
+                    if ch2 and ch2:FindFirstChild("SingularityCape") then fired = false return end
+                    local myInf = false
+                    pcall(function()
+                        for _, b in ipairs(balls:GetChildren()) do
+                            if (b:FindFirstChild("InfinityFX") or b:FindFirstChild("TrueInfinityFX")) and remy.recentlyTapped[b.Address or b.Name] and tick() - remy.recentlyTapped[b.Address or b.Name] < 2 then
+                                myInf = true
+                                break
+                            end
+                        end
+                    end)
+                    if myInf then fired = false return end
                     local me = lp.Name
                     local targeting = false
                     for _, b in ipairs(balls:GetChildren()) do
@@ -2851,12 +2884,9 @@ scan = function(dt)
     end
     if root and balls then
         local rootPos = root.Position
-        local myCharD = lp and lp.Character
-        local myHL = myCharD and myCharD:FindFirstChild("ParryHighlight") ~= nil
         local infActive = false
         pcall(function() infActive = InfinityDetection:Update() end)
         local infBallDist = nil
-        ymer.dvis = nil
         local aeroAny = false
         local needVis = lala.bvExtras ~= false or lala.showVis or lala.clash
         for _, b in ipairs(balls:GetChildren()) do
@@ -3091,16 +3121,6 @@ scan = function(dt)
     end
     if rBest and rBestVi and vis[rBestVi] then vis[rBestVi].best = true elseif best and bestVi and vis[bestVi] then vis[bestVi].best = true end
     ymer.ballList = vis
-    if lala.dribbleParry and myHL and not wasTargeted and v2on then
-        local t2 = tick()
-        if (t2 - remy.lastTap) > 0.05 then
-            remy.lastTap = t2
-            ymer.flash = t2
-            stats.taps = stats.taps + 1
-            local rel = pressParry()
-            if rel then pcall(rel) end
-        end
-    end
     local tapBest = rBest or best
     if nearestMine and (not tapBest or nearestMine.dist < tapBest.dist) and nearestMine.dist <= lala.maxDist then
         tapBest = nearestMine
@@ -3198,8 +3218,43 @@ scan = function(dt)
         end
         local minLead = math.max(lala.closeRangeDist, lala.panicBase + tapBest.speed * lala.panicSpeedMul * 0.5) * 0.85
         if readyLead < minLead then readyLead = minLead end
-        ymer.parryDist = readyLead
-        local ready = (tapBest.dist <= readyLead)
+        if lala.smartParry then
+            if lala.randomize then lala.randomize = false end
+            local smartAcc = math.clamp(20 + tapBest.speed * 0.04, 20, 35)
+            ymer.smartAcc = smartAcc
+            ymer.parryDist = nil
+            local smartLead = lead * (0.45 + (smartAcc / 100) * 0.65)
+            if tapBest.dist > smartLead then
+                -- outside smart window
+            else
+                local curvingSmart = (tapBest.closing or 0) <= getEffectiveFacingMin()
+                local isMyAbility = abilityActive
+                local isMyInfinity = false
+                pcall(function()
+                    if tapBest.addr and remy.recentlyTapped[tapBest.addr] and tick() - remy.recentlyTapped[tapBest.addr] < 2 then
+                        local b = workspace:FindFirstChild("Balls") and workspace.Balls:FindFirstChild(tapBest.addr)
+                        if b and (b:FindFirstChild("InfinityFX") or b:FindFirstChild("TrueInfinityFX")) then
+                            isMyInfinity = true
+                        end
+                    end
+                end)
+                if isMyAbility or isMyInfinity then
+                elseif not curvingSmart and not genLock[tapBest.addr] and not ballParriedOnce[tapBest.addr] and (now - (ballSpawnedAt[tapBest.addr] or 0)) >= NEW_BALL_GRACE then
+                    if t2 - remy.lastTap > lala.cooldown then
+                        remy.lastTap = t2
+                        ymer.flash = t2
+                        genLock[tapBest.addr] = t2
+                        ballParriedOnce[tapBest.addr] = t2
+                        stats.taps = stats.taps + 1
+                        doHumanParry()
+                    end
+                end
+            end
+            -- when smart parry on it skips normal/panic/visuals entirely PLEASeworkd dfcwsaglfjvkmawgn
+        else
+            ymer.smartAcc = nil
+            ymer.parryDist = readyLead
+            local ready = (tapBest.dist <= readyLead)
         local dynamicPanic3 = lala.panicBase + tapBest.speed * lala.panicSpeedMul
         local isPanic = tapBest.dist < dynamicPanic3 and tapBest.dist <= lead
         local isFastBall = tapBest.speed >= lala.fastBallThreshold
@@ -3220,7 +3275,8 @@ scan = function(dt)
             local isPanicTrigger = tapBest.dist < dynamicPanic4 and tapBest.speed > 60
             if isPanicTrigger then recentlyPanic[tapBest.addr] = t2 end
             local wasRecentPanic = recentlyPanic[tapBest.addr] and (t2 - recentlyPanic[tapBest.addr] < PANIC_GRACE)
-            if isCloseTrigger or isPanicTrigger or wasRecentPanic then
+            local curvingPanic = (tapBest.closing or 0) <= getEffectiveFacingMin()
+            if not curvingPanic and (isCloseTrigger or isPanicTrigger or wasRecentPanic) then
                 speedCooldown = 0.001
             end
             if t2 - remy.lastTap > speedCooldown then
@@ -3240,6 +3296,7 @@ scan = function(dt)
                 stats.taps = stats.taps + 1
                 doHumanParry()
             end
+        end
         end
     else
         if nBest then
@@ -3421,36 +3478,7 @@ local function hideBv(e)
     e.stxt.Visible = false
     e.tline.Visible = false
 end
-do
-    local dvTxt = Drawing.new("Text")
-    dvTxt.Size = 13
-    dvTxt.Font = 8
-    dvTxt.Center = true
-    dvTxt.Outline = true
-    dvTxt.Visible = false
-    local dvConn
-    dvConn = RunService.RenderStepped:Connect(function()
-        if bob ~= _G.__apGen then
-            pcall(function() dvTxt.Visible = false end)
-            dvConn:Disconnect()
-            return
-        end
-        pcall(function()
-            local st = ymer.dvis
-            if lala.dribbleVis and st and st.pct then
-                local sp, sv = WorldToScreen(st.pos)
-                if sv then
-                    dvTxt.Text = string.format("FACE %d%%", st.pct)
-                    dvTxt.Color = st.pass and Color3.fromRGB(60, 220, 90) or Color3.fromRGB(255, 80, 80)
-                    dvTxt.Position = { x = sp.X, y = sp.Y - 20 }
-                    dvTxt.Visible = true
-                    return
-                end
-            end
-            dvTxt.Visible = false
-        end)
-    end)
-end
+local radarBg = Drawing.new("Circle")
 local radarBg = Drawing.new("Circle")
 radarBg.Filled = true
 radarBg.Color = Color3.fromRGB(10, 10, 12)
@@ -3550,6 +3578,7 @@ local KB_ROWS = {
     { name = "Clash", key = "keyX", get = function() return ymer.clash end },
     { name = "Ability Parry", key = "keyB", get = function() return lala.abilityParry end },
     { name = "Autoplay", key = "keyG", get = function() return lala.autoplay end },
+    { name = "Smart Parry", key = "keySmart", get = function() return lala.smartParry end },
     { name = "Triggerbot", key = "keyT", get = function() return lala.triggerbot end },
     { name = "Randomize", key = "keyR", get = function() return lala.randomize end },
     { name = "Custom Lead", key = "keyL", get = function() return lala.customLeadMode end },
@@ -3697,7 +3726,10 @@ local function doToggle(key)
         lala.autoplay = not lala.autoplay
     elseif key == "T" then
         lala.triggerbot = not lala.triggerbot
+    elseif key == "Smart" then
+        lala.smartParry = not lala.smartParry
     elseif key == "R" then
+        if lala.smartParry then return end
         lala.randomize = not lala.randomize
     elseif key == "ACCPLUS" then
         lala.accuracy = math.clamp(lala.accuracy + 5, 1, 100)
@@ -3836,6 +3868,7 @@ conn = RunService.RenderStepped:Connect(function()
     local nr = keyHeld(lala.keyR)
     local ng = keyHeld(lala.keyG)
     local nt = keyHeld(lala.keyT)
+    local nSmart = keyHeld(lala.keySmart)
     local nlb = (219 ~= (_G._genUIKey or 45)) and keyHeld(219) or false
     local nrb = (221 ~= (_G._genUIKey or 45)) and keyHeld(221) or false
     local naccp = (187 ~= (_G._genUIKey or 45)) and keyHeld(187) or false
@@ -3853,6 +3886,7 @@ conn = RunService.RenderStepped:Connect(function()
         if nb and not wasB and not rc then doToggle("B") end
         if ng and not wasG and not rc then doToggle("G") end
         if nt and not wasT and not rc then doToggle("T") end
+        if nSmart and not ymer.wasSmart and not rc then doToggle("Smart") end
         if nr and not wasR and not rc then doToggle("R") end
         if nn and not wasN and not rc then doToggle("N") end
         if nfp and not wasFP and not rc then doToggle("FPLUS") end
@@ -3866,6 +3900,7 @@ conn = RunService.RenderStepped:Connect(function()
     wasB = nb
     wasG = ng
     wasT = nt
+    ymer.wasSmart = nSmart
     wasR = nr
     wasAccM = naccm
     wasAccP = naccp
@@ -4302,7 +4337,7 @@ conn = RunService.RenderStepped:Connect(function()
         else
             coneTri.Visible = false
         end
-    if lala.parryDistInd ~= false and lala.v2 and ymer.ballPos and c then
+    if not lala.smartParry and lala.parryDistInd ~= false and lala.v2 and ymer.ballPos and c then
         local pDist = ymer.parryDist or R
         local bp = ymer.ballPos
         local dx = bp.X - c.X
@@ -4338,7 +4373,7 @@ conn = RunService.RenderStepped:Connect(function()
         hitDot.Visible = false
     end
     pcall(function()
-    if lala.bvExtras ~= false then
+    if not lala.smartParry and lala.bvExtras ~= false then
         local bcr, bcg, bcb = lala.bvColor.r or 0, lala.bvColor.g or 255, lala.bvColor.b or 0
         local ber, beg, beb = lala.bvEnd.r or 255, lala.bvEnd.g or 0, lala.bvEnd.b or 0
         local btk = tonumber(lala.bvThick) or 6
@@ -5082,16 +5117,13 @@ do
 
     local parry = autoParry.new_sector("Parry")
     T(parry, "Autoparry", "v2", "keyP")
+    T(parry, "Smart Parry", "smartParry", "keySmart")
     T(parry, "Clash", "clash", "keyX")
     T(parry, "Ability Parry", "abilityParry", "keyB")
 
     local trigSec = autoParry.new_sector("Triggerbot", "Right")
     T(trigSec, "Triggerbot", "triggerbot", "keyT")
     T(trigSec, "Once", "triggerOnce")
-
-    local abilSec = autoParry.new_sector("Ability Parry", "Right")
-    T(abilSec, "Dribble Parry", "dribbleParry")
-    T(abilSec, "Dribble Visual", "dribbleVis")
 
     local selfSec = autoParry.new_sector("Self Abilities", "Right")
     T(selfSec, "Infinity Avoid", "infinityAvoid")
@@ -5385,6 +5417,7 @@ do
             defC = Color3.fromRGB(tonumber(h:sub(1, 2), 16) or 84, tonumber(h:sub(3, 4), 16) or 101, tonumber(h:sub(5, 6), 16) or 255)
         end
         local cl = accEl:add_color({ Color = defC })
+        cl.isAccent = true
         cl.defC = Color3.fromRGB(84, 101, 255)
         cl.cb = function(v)
             if library.set_accent then library:set_accent(v.Color) end

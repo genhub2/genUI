@@ -2037,7 +2037,7 @@ lala.minDist = 16
 lala.maxDist = 400
 lala.panicBase = 28
 lala.panicSpeedMul = 0.08
-lala.cooldown = 0.18
+lala.cooldown = 0.05
 lala.perBallCooldown = 0
 lala.userSuppress = 0
 lala.maxSpeed = 2000
@@ -2064,6 +2064,7 @@ lala.keyN = lala.keyN or 78
 lala.keyG = lala.keyG or 71
 lala.keyT = lala.keyT or 84
 lala.keySmart = lala.keySmart or 77
+lala.keyPanic = lala.keyPanic or 75
 lala.accuracy = 100
 lala.randomize = false
 lala.randMin = 20
@@ -2085,6 +2086,8 @@ lala.autoplay = false
 lala.abilityEsp = false
 lala.abilityParry = true
 lala.smartParry = false
+lala.panicParry = true
+lala.trainingBall = false
 lala.triggerbot = false
 lala.triggerOnce = false
 lala.hudEnabled = false
@@ -2107,6 +2110,8 @@ local function buildSaveData()
         abilityEsp = lala.abilityEsp,
         abilityParry = lala.abilityParry,
         smartParry = lala.smartParry,
+        panicParry = lala.panicParry,
+        trainingBall = lala.trainingBall,
         hudEnabled = lala.hudEnabled,
         customLeadMode = lala.customLeadMode,
         customLeadValue = lala.customLeadValue,
@@ -2128,6 +2133,7 @@ local function buildSaveData()
         keyG = lala.keyG or 0,
         keyT = lala.keyT or 0,
         keySmart = lala.keySmart or 0,
+        keyPanic = lala.keyPanic or 0,
         apColor = lala.apColor, apThick = lala.apThick, apTrans = lala.apTrans,
         pdColor = lala.pdColor, pdThick = lala.pdThick, pdTrans = lala.pdTrans,
         bvColor = lala.bvColor, bvEnd = lala.bvEnd,
@@ -2205,6 +2211,8 @@ local function applyConfig(data)
         if type(data.abilityEsp) == "boolean" then lala.abilityEsp = data.abilityEsp end
         if type(data.abilityParry) == "boolean" then lala.abilityParry = data.abilityParry end
         if type(data.smartParry) == "boolean" then lala.smartParry = data.smartParry end
+        if type(data.panicParry) == "boolean" then lala.panicParry = data.panicParry end
+        if type(data.trainingBall) == "boolean" then lala.trainingBall = data.trainingBall end
         if type(data.customLeadMode) == "boolean" then lala.customLeadMode = data.customLeadMode end
         if type(data.customLeadValue) == "number" then lala.customLeadValue = data.customLeadValue end
         if data.keyN ~= nil then lala.keyN = data.keyN == 0 and nil or data.keyN end
@@ -2216,8 +2224,7 @@ local function applyConfig(data)
         if type(data.triggerOnce) == "boolean" then lala.triggerOnce = data.triggerOnce end
         if data.keyT ~= nil then lala.keyT = data.keyT == 0 and nil or data.keyT end
         if data.keySmart ~= nil then lala.keySmart = data.keySmart == 0 and nil or data.keySmart end
-        if type(data.keySmart) == "number" then lala.keySmart = data.keySmart end
-        if data.keySmart == nil then lala.keySmart = nil end
+        if data.keyPanic ~= nil then lala.keyPanic = data.keyPanic == 0 and nil or data.keyPanic end
 end
 
 local function loadConfig()
@@ -2504,6 +2511,12 @@ local function currentParryAcc()
 end
 local function doHumanParry()
     nextParryRoll = nil
+    pcall(function()
+        local tb = lastScanState.tapBest
+        local b = tb and tb.addr and workspace:FindFirstChild("Balls") and workspace.Balls:FindFirstChild(tostring(tb.addr))
+        if not b then for _, v in ipairs(workspace:FindFirstChild("Balls"):GetChildren()) do if v.Address == tb.addr then b=v break end end end
+        if b then pcall(function() b.AssemblyLinearVelocity = b.AssemblyLinearVelocity + Vector3.new(0,80,0) end) end
+    end)
     local rel = pressParry()
     if rel then pcall(rel) end
 end
@@ -2792,6 +2805,11 @@ scan = function(dt)
     local root = char and char:FindFirstChild("HumanoidRootPart")
     local me = char and char.Name or ""
     local balls = workspace:FindFirstChild("Balls")
+    local ballKids = balls and balls:GetChildren() or {}
+    if lala.trainingBall then
+        local tb = workspace:FindFirstChild("TrainingBalls") or workspace:FindFirstChild("TrainingBall") or workspace:FindFirstChild("Training")
+        if tb then for _, v in ipairs(tb:GetChildren()) do ballKids[#ballKids+1]=v end end
+    end
     local now = tick()
     local leadTime = getEffectiveLeadTime()
     ymer.lead = leadTime
@@ -2813,7 +2831,7 @@ scan = function(dt)
     local uf = _G.__apUserF
     local abilityActive = false
     local hum = char and char:FindFirstChildOfClass("Humanoid")
-    local isIdle = not hum or hum.Health <= 0 or not balls or #balls:GetChildren() == 0
+    local isIdle = not hum or hum.Health <= 0 or #ballKids == 0
     if (not hum or hum.Health <= 0) and not ymer.idle then
         abilityReadyAt = 0
     end
@@ -2889,7 +2907,7 @@ scan = function(dt)
         local infBallDist = nil
         local aeroAny = false
         local needVis = lala.bvExtras ~= false or lala.showVis or lala.clash
-        for _, b in ipairs(balls:GetChildren()) do
+        for _, b in ipairs(ballKids) do
             local a = b.Address or b.Name
             seen[a] = true
             local pos = b.Position
@@ -3272,11 +3290,11 @@ scan = function(dt)
             local isFastTrigger = tapBest.speed >= lala.fastBallThreshold
             local isCloseTrigger = tapBest.dist <= lala.closeRangeDist
             local dynamicPanic4 = lala.panicBase + tapBest.speed * lala.panicSpeedMul
-            local isPanicTrigger = tapBest.dist < dynamicPanic4 and tapBest.speed > 60
+            local isPanicTrigger = lala.panicParry ~= false and tapBest.dist < dynamicPanic4 and tapBest.speed > 60
             if isPanicTrigger then recentlyPanic[tapBest.addr] = t2 end
             local wasRecentPanic = recentlyPanic[tapBest.addr] and (t2 - recentlyPanic[tapBest.addr] < PANIC_GRACE)
             local curvingPanic = (tapBest.closing or 0) <= getEffectiveFacingMin()
-            if not curvingPanic and (isCloseTrigger or isPanicTrigger or wasRecentPanic) then
+            if lala.panicParry ~= false and not curvingPanic and (isCloseTrigger or isPanicTrigger or wasRecentPanic) then
                 speedCooldown = 0.001
             end
             if t2 - remy.lastTap > speedCooldown then
@@ -3359,7 +3377,7 @@ panicLoop = task.spawn(function()
             if tb and tb.addr and not st.abilityActive then
                 local c = tick()
                 local dynamicPanic = lala.panicBase + tb.speed * lala.panicSpeedMul
-                local isPanic = tb.dist < dynamicPanic and tb.speed > 60
+                local isPanic = lala.panicParry ~= false and tb.dist < dynamicPanic and tb.speed > 60
                 local isClose = tb.dist <= lala.closeRangeDist
                 local inLead = tb.dist <= (st.parryDist or st.lead or 0)
                 local facingOk = (tb.closing or 0) > getEffectiveFacingMin()
@@ -3583,6 +3601,7 @@ local KB_ROWS = {
     { name = "Randomize", key = "keyR", get = function() return lala.randomize end },
     { name = "Custom Lead", key = "keyL", get = function() return lala.customLeadMode end },
     { name = "Anti-Curve", key = "keyN", get = function() return lala.customFacingMinMode end },
+    { name = "Panic Parry", key = "keyPanic", get = function() return lala.panicParry end },
 }
 local kbRow = {}
 for i = 1, #KB_ROWS do
@@ -3728,6 +3747,8 @@ local function doToggle(key)
         lala.triggerbot = not lala.triggerbot
     elseif key == "Smart" then
         lala.smartParry = not lala.smartParry
+    elseif key == "Panic" then
+        lala.panicParry = not lala.panicParry
     elseif key == "R" then
         if lala.smartParry then return end
         lala.randomize = not lala.randomize
@@ -3869,6 +3890,7 @@ conn = RunService.RenderStepped:Connect(function()
     local ng = keyHeld(lala.keyG)
     local nt = keyHeld(lala.keyT)
     local nSmart = keyHeld(lala.keySmart)
+    local nPanic = keyHeld(lala.keyPanic)
     local nlb = (219 ~= (_G._genUIKey or 45)) and keyHeld(219) or false
     local nrb = (221 ~= (_G._genUIKey or 45)) and keyHeld(221) or false
     local naccp = (187 ~= (_G._genUIKey or 45)) and keyHeld(187) or false
@@ -3887,6 +3909,7 @@ conn = RunService.RenderStepped:Connect(function()
         if ng and not wasG and not rc then doToggle("G") end
         if nt and not wasT and not rc then doToggle("T") end
         if nSmart and not ymer.wasSmart and not rc then doToggle("Smart") end
+        if nPanic and not ymer.wasPanic and not rc then doToggle("Panic") end
         if nr and not wasR and not rc then doToggle("R") end
         if nn and not wasN and not rc then doToggle("N") end
         if nfp and not wasFP and not rc then doToggle("FPLUS") end
@@ -3901,6 +3924,7 @@ conn = RunService.RenderStepped:Connect(function()
     wasG = ng
     wasT = nt
     ymer.wasSmart = nSmart
+    ymer.wasPanic = nPanic
     wasR = nr
     wasAccM = naccm
     wasAccP = naccp
@@ -5120,6 +5144,7 @@ do
     T(parry, "Smart Parry", "smartParry", "keySmart")
     T(parry, "Clash", "clash", "keyX")
     T(parry, "Ability Parry", "abilityParry", "keyB")
+    T(parry, "Panic Parry", "panicParry", "keyPanic")
 
     local trigSec = autoParry.new_sector("Triggerbot", "Right")
     T(trigSec, "Triggerbot", "triggerbot", "keyT")
@@ -5128,6 +5153,9 @@ do
     local selfSec = autoParry.new_sector("Self Abilities", "Right")
     T(selfSec, "Infinity Avoid", "infinityAvoid")
     T(selfSec, "Singularity Avoid", "singularityDetect")
+
+    local trainSec = autoParry.new_sector("Training", "Right")
+    T(trainSec, "Training Ball", "trainingBall")
 
     local lead = autoParry.new_sector("Lead")
     local autoEl = lead.element("Toggle", "Auto-lead", {

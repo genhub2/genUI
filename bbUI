@@ -41,7 +41,7 @@ local CARD_TOP = CY - math.floor(CARD_TOTAL / 2)
 
 local OPTIONS = {
     { mode = "full",   label = "Full Script",        desc = "Every feature enabled.",          tag = "FULL" },
-    { mode = "noesp",  label = "No ESPs",            desc = "Full script without ESP delay.",  tag = "LESS DELAY" },
+    { mode = "noesp",  label = "Secondary",            desc = "Full script without some major delays.",  tag = "LESS DELAY" },
     { mode = "circle", label = "Autoparry + Circle", desc = "Lowest delay. AP + Circle only.", tag = "MINIMAL" },
 }
 

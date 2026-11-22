@@ -6,50 +6,52 @@ local GITHUB_URLS = {
 
 local Players = game:GetService("Players")
 local lp = Players.LocalPlayer
+local UIS = game:GetService("UserInputService")
 local cam = workspace.CurrentCamera
 local vp = cam and cam.ViewportSize or Vector2.new(1920, 1080)
 local sx, sy = vp.X, vp.Y
 
-local ACCENT       = Color3.fromRGB(255, 255, 255)
-local ACCENT_SOFT  = Color3.fromRGB(206, 210, 220)
-local COL_BG       = Color3.fromRGB(0, 0, 0)
-local COL_TEXT     = Color3.fromRGB(245, 246, 250)
-local COL_SUB      = Color3.fromRGB(200, 203, 212)
-local COL_MUTED    = Color3.fromRGB(150, 153, 164)
-local COL_IDLE     = Color3.fromRGB(150, 153, 164)
-local COL_ERROR    = Color3.fromRGB(235, 80, 80)
-
-local PLANET_R      = math.min(332, math.floor(sy * 0.48))
-local GLOW_COLOR    = Color3.fromRGB(255, 255, 255)
-local GLOW_RINGS    = 12
-local GLOW_REACH    = 69
-local GLOW_PERIOD   = 2.6
-local GLOW_STRENGTH = 1
-
-local G_SIZE        = math.floor(PLANET_R * 1.8)
-local G_NUDGE_X     = 0 
-local G_NUDGE_Y     = 0
+local C_TEXT   = Color3.fromRGB(244, 246, 250)
+local C_SUB    = Color3.fromRGB(163, 168, 180)
+local C_MUTED  = Color3.fromRGB(104, 109, 122)
+local C_ACCENT = Color3.fromRGB(255, 255, 255)
+local C_ERROR  = Color3.fromRGB(235, 80, 80)
 
 local CX = math.floor(sx * 0.5)
 local CY = math.floor(sy * 0.5)
 
-local CARD_W, CARD_H = 380, 64
-local CARD_GAP = 12
-local CARD_X = CX - math.floor(CARD_W / 2)
-local CARD_TOTAL = CARD_H * 3 + CARD_GAP * 2
-local CARD_TOP = CY - math.floor(CARD_TOTAL / 2)
+local PANEL_W = 460
+local ROW_H   = 60
+local HEAD_H  = 72
+local FOOT_H  = 44
+local PANEL_H = HEAD_H + ROW_H * 3 + FOOT_H
+local PANEL_X = CX - math.floor(PANEL_W / 2)
+local PANEL_Y = CY - math.floor(PANEL_H / 2)
+local FOOT_Y  = PANEL_Y + HEAD_H + ROW_H * 3
+
+local EXIT_X = CX - 70
+local EXIT_Y = FOOT_Y + 18
+local EXIT_W = 140
+local EXIT_H = 22
 
 local OPTIONS = {
-    { mode = "full",   label = "Full Script",        desc = "Every feature enabled.",          tag = "FULL" },
-    { mode = "noesp",  label = "Secondary",            desc = "Full script without some major delays.",  tag = "LESS DELAY" },
-    { mode = "circle", label = "Autoparry + Circle", desc = "Lowest delay. AP + Circle only.", tag = "MINIMAL" },
+    { mode = "full",   label = "Full Script",        desc = "Every feature enabled.",          tag = "FULL", tagOffset = 0, tip = "Everything enabled - visuals, ESP, stats, configs." },
+    { mode = "noesp",  label = "No ESPs",            desc = "Full script without ESP delay.",  tag = "LESS DELAY", tagOffset = 8, tip = "Full feature set with reduced parry delay." },
+    { mode = "circle", label = "Autoparry + Circle", desc = "Lowest delay. AP + Circle only.", tag = "MINIMAL", tagOffset = 8, tip = "Autoparry and circle visuals - lowest delay." },
 }
+
+local okSaved, savedMode = pcall(readfile, "loadmode.txt")
+local lastMode = okSaved and type(savedMode) == "string" and savedMode:gsub("%s+", "") or nil
+
+local LOAD_DELAY = 4
+local START_DELAY = 4
+local bootUntil = tick() + START_DELAY
+while tick() < bootUntil do
+    task.wait()
+end
 
 local running = true
 local allDrawings = {}
-local streaks = {}
-local streakSegments = {}
-local STREAK_LIFE = 3
 
 local function newDrawing(kind)
     local d = Drawing.new(kind)
@@ -58,6 +60,7 @@ local function newDrawing(kind)
 end
 
 local function lerp(a, b, t) return a + (b - a) * t end
+local function easeOut(p) return 1 - (1 - p) * (1 - p) * (1 - p) end
 
 local function lerpColor(a, b, t)
     return Color3.new(
@@ -73,366 +76,248 @@ local function newText(txt, font, size, color, z)
     d.Font = font
     d.Size = size
     d.Color = color
-    pcall(function() d.Outline = true end)
-    pcall(function() d.OutlineColor = Color3.fromRGB(0, 0, 0) end)
+    d.Transparency = 1
     d.ZIndex = z
     d.Visible = true
     return d
 end
 
-local function newOutline(x, y, w, h, z)
-    local dark = newDrawing("Square")
-    dark.Filled = false
-    dark.Color = Color3.fromRGB(0, 0, 0)
-    dark.Thickness = 3
-    dark.Size = Vector2.new(w + 2, h + 2)
-    dark.Position = Vector2.new(x - 1, y - 1)
-    dark.ZIndex = z
-    dark.Visible = true
-
-    local light = newDrawing("Square")
-    light.Filled = false
-    light.Color = COL_IDLE
-    light.Thickness = 1
-    light.Size = Vector2.new(w, h)
-    light.Position = Vector2.new(x, y)
-    light.ZIndex = z + 1
-    light.Visible = true
-
-    return { dark = dark, light = light }
+local function textWidth(d, fallback)
+    local ok, bounds = pcall(function() return d.TextBounds end)
+    if ok and bounds and bounds.X and bounds.X > 0 then return bounds.X end
+    return fallback
 end
 
-local SNOW = 600
-local snow = {}
-for i = 1, SNOW do
-    local depth = math.random()
-    local c = newDrawing("Circle")
-    c.Filled = true
-    c.Radius = 1 + depth * 2.2
-    c.NumSides = 16
-    c.Color = Color3.fromRGB(255, 255, 255)
-    c.Transparency = 0.25 + depth * 0.5
-    c.ZIndex = 1
-    local px = math.random() * sx
-    local py = math.random() * sy
-    c.Position = Vector2.new(px, py)
-    c.Visible = true
-    snow[i] = {
-        d = c, x = px, y = py,
-        speed = 12 + depth * 48,
-        drift = (math.random() - 0.5) * 14,
-        wobble = math.random() * math.pi * 2,
-    }
+local function inRect(mx, my, x, y, w, h)
+    return mx >= x and mx <= x + w and my >= y and my <= y + h
 end
 
-
-local snowLast = tick()
-local function updateSnow(mx, my)
-    local now = tick()
-    local dt = math.min(now - snowLast, 0.1)
-    snowLast = now
-    local gt = now / GLOW_PERIOD
-    for i = 1, #snow do
-        local s = snow[i]
-        s.wobble = s.wobble + dt * 1.6
-        s.y = s.y + s.speed * dt
-        s.x = s.x + (s.drift + math.sin(s.wobble) * 6) * dt
-        if s.y > sy + 8 then
-            s.y = -8
-            s.x = math.random() * sx
-        end
-        if s.x < -8 then s.x = sx + 8 elseif s.x > sx + 8 then s.x = -8 end
-
-        do
-            local cx = s.x - mx
-            local cy = s.y - my
-            local d = math.sqrt(cx * cx + cy * cy)
-            if d > 0.001 and d < 95 then
-                local force = (1 - d / 95) * dt * 1440
-                force = math.min(force, 12)
-                s.x = s.x + (cx / d) * force
-                s.y = s.y + (cy / d) * force
-            end
-        end
-
-        for j = 1, #streaks do
-            local st = streaks[j]
-            local cx = s.x - st.x
-            local cy = s.y - st.y
-            local d = math.sqrt(cx * cx + cy * cy)
-            if d > 0.001 then
-                local fall = 1 - (now - st.t) / STREAK_LIFE
-                if fall > 0 and d < 80 then
-                    local force = (fall * (1 - d / 80)) * dt * 1200
-                    force = math.min(force, 12)
-                    s.x = s.x + (cx / d) * force
-                    s.y = s.y + (cy / d) * force
-                end
-            end
-        end
-
-        do
-            local rx = s.x - CX
-            local ry = s.y - CY
-            local radial = math.sqrt(rx * rx + ry * ry)
-            local outside = radial - PLANET_R
-            if outside >= 0 then
-                for r = 1, GLOW_RINGS do
-                    local phase = (gt + (r - 1) / GLOW_RINGS) % 1
-                    local grow = phase * GLOW_REACH
-                    if outside >= grow - 10 and outside <= grow + 10 then
-                        local len = math.max(1, radial)
-                        s.x = s.x + (rx / len) * dt * 420
-                        s.y = s.y + (ry / len) * dt * 420
-                        break
-                    end
-                end
-            end
-        end
-
-        s.d.Position = Vector2.new(s.x, s.y)
-    end
-end
-
-local glow = {}
-for i = 1, GLOW_RINGS do
-    local fill = newDrawing("Circle")
-    fill.Filled = true
-    fill.NumSides = 48
-    fill.Color = GLOW_COLOR
-    fill.Transparency = 0
-    fill.ZIndex = 1
-    fill.Position = Vector2.new(CX, CY)
-    fill.Radius = PLANET_R
-    fill.Visible = true
-
-    local ring = newDrawing("Circle")
-    ring.Filled = false
-    ring.NumSides = 48
-    ring.Color = GLOW_COLOR
-    ring.Thickness = 2
-    ring.Transparency = 0
-    ring.ZIndex = 2
-    ring.Position = Vector2.new(CX, CY)
-    ring.Radius = PLANET_R
-    ring.Visible = true
-
-    glow[i] = { d = ring, f = fill, offset = (i - 1) / GLOW_RINGS }
-end
-
-local function updateGlow()
-    local t = tick() / GLOW_PERIOD
-    for i = 1, #glow do
-        local g = glow[i]
-        local phase = (t + g.offset) % 1
-        local grow = phase * GLOW_REACH
-        local fade = (1 - phase)
-        fade = fade * fade * fade
-        local fadeIn = math.min(phase * 8, 1)
-
-        g.d.Position = Vector2.new(CX, CY)
-        g.d.Radius   = PLANET_R + 2 + grow
-        g.d.Thickness = 2 + (1 - phase) * 2
-        g.d.Transparency = GLOW_STRENGTH * fade * fadeIn
-
-        g.f.Position = Vector2.new(CX, CY)
-        g.f.Radius   = PLANET_R + 2 + grow
-        g.f.Transparency = GLOW_STRENGTH * fade * fadeIn * 0.25
-    end
+local function currentMouse()
+    local ok, pos = pcall(function() return UIS:GetMouseLocation() end)
+    if ok and pos then return pos.X, pos.Y end
+    local mouse = lp:GetMouse()
+    return (mouse and mouse.X or 0), (mouse and mouse.Y or 0)
 end
 
 local backdrop = newDrawing("Square")
 backdrop.Filled = true
 backdrop.Color = Color3.fromRGB(0, 0, 0)
-backdrop.Transparency = 1
-backdrop.Size = Vector2.new(sx, sy)
+backdrop.Transparency = 0
 backdrop.Position = Vector2.new(0, 0)
+backdrop.Size = Vector2.new(sx, sy)
 backdrop.ZIndex = 0
 backdrop.Visible = true
 
-local planet = newDrawing("Circle")
-planet.Filled = true
-planet.NumSides = 128
-planet.Color = ACCENT
-planet.Transparency = 1
-planet.Radius = PLANET_R
-planet.Position = Vector2.new(CX, CY)
-planet.ZIndex = 4
-planet.Visible = true
-
-local planetRim = newDrawing("Circle")
-planetRim.Filled = false
-planetRim.NumSides = 128
-planetRim.Color = ACCENT_SOFT
-planetRim.Thickness = 2
-planetRim.Transparency = 1
-planetRim.Radius = PLANET_R
-planetRim.Position = Vector2.new(CX, CY)
-planetRim.ZIndex = 5
-planetRim.Visible = true
-
-local gW = math.floor(PLANET_R * 0.78)
-local gH = math.floor(PLANET_R * 1.05)
-local gl = CX - math.floor(gW / 2)
-local gt = CY - math.floor(gH / 2)
-local gr = gl + gW
-local gb = gt + gH
-local stroke = math.max(14, math.floor(gW * 0.20))
-local mid = CY
-
-do
-    local b = newDrawing("Square")
-    b.Filled = true
-    b.Color = COL_BG
-    b.Size = Vector2.new(gW, stroke)
-    b.Position = Vector2.new(gl, gt)
-    b.ZIndex = 6
-    b.Visible = true
-end
-
-do
-    local b = newDrawing("Square")
-    b.Filled = true
-    b.Color = COL_BG
-    b.Size = Vector2.new(stroke, gH)
-    b.Position = Vector2.new(gl, gt)
-    b.ZIndex = 6
-    b.Visible = true
-end
-
-do
-    local b = newDrawing("Square")
-    b.Filled = true
-    b.Color = COL_BG
-    b.Size = Vector2.new(gW, stroke)
-    b.Position = Vector2.new(gl, gb - stroke)
-    b.ZIndex = 6
-    b.Visible = true
-end
-
-do
-    local b = newDrawing("Square")
-    b.Filled = true
-    b.Color = COL_BG
-    b.Size = Vector2.new(math.ceil(gW * 0.55), stroke)
-    b.Position = Vector2.new(gl + math.floor(gW * 0.45), mid - math.floor(stroke / 2))
-    b.ZIndex = 6
-    b.Visible = true
-end
-
-do
-    local b = newDrawing("Square")
-    b.Filled = true
-    b.Color = COL_BG
-    b.Size = Vector2.new(stroke, math.floor(gH / 2) + stroke)
-    b.Position = Vector2.new(gr - stroke, mid - math.floor(stroke / 2))
-    b.ZIndex = 6
-    b.Visible = true
-end
-
-local cards = {}
-local function inRect(mx, my, x, y, w, h)
-    return mx >= x and mx <= x + w and my >= y and my <= y + h
-end
-
-for i, opt in ipairs(OPTIONS) do
-    local y = CARD_TOP + (i - 1) * (CARD_H + CARD_GAP)
-
-    local frameFill = newDrawing("Square")
-    frameFill.Filled = true
-    frameFill.Color = Color3.fromRGB(10, 10, 13)
-frameFill.Transparency = 0.9
-    frameFill.Size = Vector2.new(CARD_W, CARD_H)
-    frameFill.Position = Vector2.new(CARD_X, y)
-    frameFill.ZIndex = 6
-    frameFill.Visible = true
-
-    local frame = newOutline(CARD_X, y, CARD_W, CARD_H, 7)
-
-    local stripeDark = newDrawing("Square")
-    stripeDark.Filled = true
-    stripeDark.Color = Color3.fromRGB(0, 0, 0)
-    stripeDark.Size = Vector2.new(5, CARD_H + 2)
-    stripeDark.Position = Vector2.new(CARD_X - 1, y - 1)
-    stripeDark.ZIndex = 13
-    stripeDark.Visible = true
-
-    local stripe = newDrawing("Square")
-    stripe.Filled = true
-    stripe.Color = COL_IDLE
-    stripe.Size = Vector2.new(3, CARD_H)
-    stripe.Position = Vector2.new(CARD_X, y)
-    stripe.ZIndex = 14
-    stripe.Visible = true
-
-    local badgeS = 28
-    local badgeX = CARD_X + 18
-    local badgeY = y + math.floor((CARD_H - badgeS) / 2)
-    local badge = newOutline(badgeX, badgeY, badgeS, badgeS, 9)
-
-    local num = newText(tostring(i), 2, 14, COL_MUTED, 12)
-    num.Center = true
-    num.Position = Vector2.new(badgeX + badgeS / 2, badgeY + 6)
-
-    local textX = badgeX + badgeS + 16
-
-    local label = newText(opt.label, 2, 15, COL_TEXT, 12)
-    label.Position = Vector2.new(textX, y + 14)
-
-    local desc = newText(opt.desc, 1, 12, COL_MUTED, 12)
-    desc.Position = Vector2.new(textX, y + 36)
-
-    local tag = newText(opt.tag, 2, 11, COL_SUB, 12)
-    tag.Center = true
-
-    local textW = #opt.tag * 8
-    local okB, bounds = pcall(function() return tag.TextBounds end)
-    if okB and bounds and bounds.X and bounds.X > 0 then
-        textW = math.max(textW, bounds.X)
-    end
-
-    local pillW = math.ceil(textW + 28)
-    local pillH = 24
-    local pillX = CARD_X + CARD_W - 16 - pillW
-    local pillY = y + math.floor((CARD_H - pillH) / 2)
-
-    tag.Position = Vector2.new(pillX + pillW / 2, pillY + math.floor((pillH - 11) / 2) + 4)
-
-    local pill = newOutline(pillX, pillY, pillW, pillH, 9)
-
-    cards[#cards + 1] = {
-        mode = opt.mode,
-        x = CARD_X, y = y, w = CARD_W, h = CARD_H,
-        textX = textX,
-        frame = frame, frameFill = frameFill, stripe = stripe, stripeDark = stripeDark,
-        badge = badge, num = num, label = label, desc = desc,
-        pill = pill, tag = tag,
-        t = 0,
+local DUST = 48
+local dust = {}
+for i = 1, DUST do
+    local d = newDrawing("Circle")
+    d.Filled = true
+    d.NumSides = 12
+    d.Radius = 0.7 + math.random() * 1.1
+    d.Color = C_ACCENT
+    d.Transparency = 0
+    d.ZIndex = 1
+    local px = math.random() * sx
+    local py = math.random() * sy
+    d.Position = Vector2.new(px, py)
+    d.Visible = true
+    dust[i] = {
+        d = d, x = px, y = py,
+        vy = -(6 + math.random() * 14),
+        wobble = math.random() * math.pi * 2,
+        base = 0.05 + math.random() * 0.12,
     }
 end
 
-local status = newText("", 1, 13, COL_ERROR, 12)
+local panel = newDrawing("Square")
+panel.Filled = true
+panel.Color = Color3.fromRGB(0, 0, 0)
+panel.Transparency = 0
+panel.Position = Vector2.new(PANEL_X, PANEL_Y)
+panel.Size = Vector2.new(PANEL_W, PANEL_H)
+panel.ZIndex = 2
+panel.Visible = true
+
+local border = newDrawing("Square")
+border.Filled = false
+border.Color = C_ACCENT
+border.Transparency = 0
+border.Thickness = 1
+border.Position = Vector2.new(PANEL_X, PANEL_Y)
+border.Size = Vector2.new(PANEL_W, PANEL_H)
+border.ZIndex = 3
+border.Visible = true
+
+local topLine = newDrawing("Square")
+topLine.Filled = true
+topLine.Color = C_ACCENT
+topLine.Transparency = 0
+topLine.Position = Vector2.new(PANEL_X, PANEL_Y)
+topLine.Size = Vector2.new(PANEL_W, 2)
+topLine.ZIndex = 4
+topLine.Visible = true
+
+local sweep = newDrawing("Square")
+sweep.Filled = true
+sweep.Color = C_ACCENT
+sweep.Transparency = 0
+sweep.Position = Vector2.new(PANEL_X, PANEL_Y)
+sweep.Size = Vector2.new(20, 2)
+sweep.ZIndex = 5
+sweep.Visible = true
+
+local headMark = newDrawing("Square")
+headMark.Filled = true
+headMark.Color = C_ACCENT
+headMark.Transparency = 0
+headMark.Position = Vector2.new(PANEL_X + 24, PANEL_Y + 18)
+headMark.Size = Vector2.new(3, 18)
+headMark.ZIndex = 7
+headMark.Visible = true
+
+local title = newText("gennegen", 2, 21, C_TEXT, 7)
+title.Position = Vector2.new(PANEL_X + 38, PANEL_Y + 15)
+
+local subtitle = newText("blade ball loader", 1, 10, C_MUTED, 7)
+subtitle.Position = Vector2.new(PANEL_X + 39, PANEL_Y + 41)
+
+local headLine = newDrawing("Line")
+headLine.From = Vector2.new(PANEL_X + 24, PANEL_Y + HEAD_H)
+headLine.To = Vector2.new(PANEL_X + PANEL_W - 24, PANEL_Y + HEAD_H)
+headLine.Color = C_ACCENT
+headLine.Thickness = 1
+headLine.Transparency = 0
+headLine.ZIndex = 5
+headLine.Visible = true
+
+local loadTrack = newDrawing("Square")
+loadTrack.Filled = true
+loadTrack.Color = C_ACCENT
+loadTrack.Transparency = 0
+loadTrack.Position = Vector2.new(PANEL_X + 20, PANEL_Y + HEAD_H - 5)
+loadTrack.Size = Vector2.new(PANEL_W - 40, 2)
+loadTrack.ZIndex = 6
+loadTrack.Visible = true
+
+local loadFill = newDrawing("Square")
+loadFill.Filled = true
+loadFill.Color = C_ACCENT
+loadFill.Transparency = 0
+loadFill.Position = loadTrack.Position
+loadFill.Size = Vector2.new(0, 2)
+loadFill.ZIndex = 7
+loadFill.Visible = true
+
+local rows = {}
+
+for i, opt in ipairs(OPTIONS) do
+    local y = PANEL_Y + HEAD_H + (i - 1) * ROW_H
+
+    local fill = newDrawing("Square")
+    fill.Filled = true
+    fill.Color = C_ACCENT
+    fill.Transparency = 0
+    fill.Position = Vector2.new(PANEL_X + 1, y)
+    fill.Size = Vector2.new(PANEL_W - 2, ROW_H)
+    fill.ZIndex = 4
+    fill.Visible = true
+
+    local sheen = newDrawing("Square")
+    sheen.Filled = true
+    sheen.Color = C_ACCENT
+    sheen.Transparency = 0
+    sheen.Position = Vector2.new(PANEL_X, y)
+    sheen.Size = Vector2.new(36, ROW_H)
+    sheen.ZIndex = 5
+    sheen.Visible = true
+
+    local stripe = newDrawing("Square")
+    stripe.Filled = true
+    stripe.Color = C_ACCENT
+    stripe.Transparency = 0
+    stripe.Position = Vector2.new(PANEL_X + 1, y + 10)
+    stripe.Size = Vector2.new(2, ROW_H - 20)
+    stripe.ZIndex = 6
+    stripe.Visible = true
+
+    local arrow = newText(">", 2, 12, C_ACCENT, 7)
+    arrow.Position = Vector2.new(PANEL_X + 36, y + 10)
+
+    local num = newText(string.format("%02d", i), 1, 11, C_MUTED, 7)
+    num.Position = Vector2.new(PANEL_X + 24, y + 12)
+
+    local marker = nil
+    if lastMode == opt.mode then
+        marker = newDrawing("Square")
+        marker.Filled = true
+        marker.Color = C_ACCENT
+        marker.Transparency = 0
+        marker.Position = Vector2.new(PANEL_X + 13, y + 26)
+        marker.Size = Vector2.new(3, 8)
+        marker.ZIndex = 7
+        marker.Visible = true
+    end
+
+    local label = newText(opt.label, 2, 15, C_SUB, 7)
+    label.Position = Vector2.new(PANEL_X + 60, y + 10)
+
+    local desc = newText(opt.desc, 1, 11, C_MUTED, 7)
+    desc.Position = Vector2.new(PANEL_X + 60, y + 33)
+
+    local tag = newText(opt.tag, 2, 8, C_MUTED, 7)
+    local tw = #opt.tag * 5
+    local tagX = PANEL_X + PANEL_W - 22 - tw + (opt.tagOffset or 0)
+    tag.Position = Vector2.new(tagX + 2, y + 13)
+
+    local tagBox = newDrawing("Square")
+    tagBox.Filled = false
+    tagBox.Color = C_ACCENT
+    tagBox.Transparency = 0
+    tagBox.Thickness = 1
+    tagBox.Position = Vector2.new(tagX - 3, y + 11)
+    tagBox.Size = Vector2.new(tw + 6, 14)
+    tagBox.ZIndex = 6
+    tagBox.Visible = true
+
+    local divider = nil
+    if i < #OPTIONS then
+        divider = newDrawing("Line")
+        divider.From = Vector2.new(PANEL_X + 24, y + ROW_H)
+        divider.To = Vector2.new(PANEL_X + PANEL_W - 24, y + ROW_H)
+        divider.Color = C_ACCENT
+        divider.Thickness = 1
+        divider.Transparency = 0
+        divider.ZIndex = 5
+        divider.Visible = true
+    end
+
+    rows[#rows + 1] = {
+        mode = opt.mode,
+        x = PANEL_X, y = y, w = PANEL_W, h = ROW_H,
+        fill = fill, sheen = sheen, stripe = stripe, arrow = arrow,
+        num = num, label = label, desc = desc, tag = tag, tagBox = tagBox,
+        marker = marker, tip = opt.tip, divider = divider,
+        t = 0, sheenT = nil, hoverPrev = false,
+    }
+end
+
+local footLine = newDrawing("Line")
+footLine.From = Vector2.new(PANEL_X + 24, FOOT_Y)
+footLine.To = Vector2.new(PANEL_X + PANEL_W - 24, FOOT_Y)
+footLine.Color = C_ACCENT
+footLine.Thickness = 1
+footLine.Transparency = 0
+footLine.ZIndex = 5
+footLine.Visible = true
+
+local status = newText("", 1, 11, C_ERROR, 7)
 status.Center = true
-status.Position = Vector2.new(CX, CY + math.floor(CARD_TOTAL / 2) + 22)
+status.Position = Vector2.new(CX, FOOT_Y + 10)
 
-local exitW, exitH = 104, 28
-local exitX = CX - math.floor(exitW / 2)
-local exitY = CY + math.floor(CARD_TOTAL / 2) + 38
-
-local exitFill = newDrawing("Square")
-exitFill.Filled = true
-exitFill.Color = Color3.fromRGB(10, 10, 13)
-exitFill.Transparency = 0.14
-exitFill.Size = Vector2.new(exitW, exitH)
-exitFill.Position = Vector2.new(exitX, exitY)
-exitFill.ZIndex = 6
-exitFill.Visible = true
-
-local exitFrame = newOutline(exitX, exitY, exitW, exitH, 7)
-
-local footer = newText("ESC - close", 1, 11, COL_MUTED, 12)
-footer.Center = true
-footer.Position = Vector2.new(CX, exitY + math.floor(exitH / 2) - 6)
+local hint = newText("ESC  -  close", 1, 10, C_MUTED, 7)
+hint.Center = true
+hint.Position = Vector2.new(CX, FOOT_Y + 27)
 
 local function normalizeUrl(u)
     if type(u) ~= "string" then return nil end
@@ -464,28 +349,77 @@ end
 
 local flashUntil = 0
 local function flash(msg)
-    status.Color = COL_ERROR
+    status.Color = C_ERROR
     status.Text = msg
     flashUntil = tick() + 3
 end
 
 local chosen = nil
 local loading = false
-local lastFrame = tick()
+local started = tick()
+local lastFrame = started
 local dotsT = 0
+local loadStart = 0
+local pendingMode = nil
+local pendingUrl = nil
+local fetching = false
 
 while not chosen do
     local now = tick()
     local dt = math.min(now - lastFrame, 0.1)
     lastFrame = now
 
-    local mouse = lp:GetMouse()
-    local mx = mouse and mouse.X or 0
-    local my = mouse and mouse.Y or 0
+    local age = now - started
+    local pin = easeOut(math.min(age / 0.28, 1))
+    local hin = easeOut(math.min(math.max(age - 0.10, 0) / 0.30, 1))
+    local fin = easeOut(math.min(math.max(age - 0.45, 0) / 0.30, 1))
+
+    local mx, my = currentMouse()
     local m1 = ismouse1pressed()
 
-    updateSnow(mx, my)
-    updateGlow()
+    backdrop.Transparency = math.min(age / 0.25, 1)
+
+    for i = 1, #dust do
+        local p = dust[i]
+        p.wobble = p.wobble + dt * 0.8
+        p.y = p.y + p.vy * dt
+        p.x = p.x + math.sin(p.wobble) * 4 * dt
+        if p.y < -6 then
+            p.y = sy + 6
+            p.x = math.random() * sx
+        end
+        local dx = p.x - mx
+        local dy = p.y - my
+        local dist2 = dx * dx + dy * dy
+        if dist2 < 6400 and dist2 > 1 then
+            local dist = math.sqrt(dist2)
+            local f = (1 - dist / 80) * dt * 220
+            p.x = p.x + dx / dist * f
+            p.y = p.y + dy / dist * f
+        end
+        p.d.Position = Vector2.new(p.x, p.y)
+        p.d.Transparency = p.base * pin
+    end
+
+    panel.Transparency = pin
+    border.Transparency = 0.08 * pin
+    topLine.Transparency = 0.10 * pin
+
+    local sp = (now * 0.28) % 1
+    local se = math.sin(sp * math.pi)
+    sweep.Position = Vector2.new(PANEL_X + sp * (PANEL_W - 20), PANEL_Y)
+    sweep.Size = Vector2.new(20 + se * 26, 2)
+    sweep.Transparency = se * 0.7 * pin
+
+    headMark.Transparency = (0.6 + 0.4 * (0.5 + 0.5 * math.sin(now * 3.2))) * pin
+    title.Transparency = hin
+    subtitle.Transparency = hin
+    headLine.Transparency = 0.08 * hin
+
+    local loadP = loading and math.min((now - loadStart) / LOAD_DELAY, 1) or 0
+    loadTrack.Transparency = (loading and 0.08 or 0) * fin
+    loadFill.Transparency = (loading and 0.5 or 0) * fin
+    loadFill.Size = Vector2.new((PANEL_W - 40) * loadP, 2)
 
     if not loading and tick() > flashUntil then
         status.Text = ""
@@ -497,84 +431,63 @@ while not chosen do
         status.Text = status.Text:gsub("%.+$", "") .. string.rep(".", n)
     end
 
-    local overPlanet = ((mx - CX)^2 + (my - CY)^2) <= PLANET_R^2
-
     local hover = nil
-    local exitHover = false
-    for i = 1, #cards do
-        local c = cards[i]
-        local over = (not loading) and inRect(mx, my, c.x, c.y, c.w, c.h)
-        if over then hover = c end
+    for i = 1, #rows do
+        local r = rows[i]
+        local over = (not loading) and inRect(mx, my, r.x, r.y, r.w, r.h)
+        if over then hover = r end
 
+        local rin = easeOut(math.min(math.max(age - 0.22 - i * 0.06, 0) / 0.34, 1))
         local target = over and 1 or 0
-        c.t = lerp(c.t, target, math.min(dt * 14, 1))
-        local t = c.t
-        c.frame.light.Color  = lerpColor(COL_IDLE, ACCENT, t)
-        c.frameFill.Transparency = 0.9 + t * 0.08
-        c.frame.dark.Thickness = 3 + t
-        c.stripe.Color       = lerpColor(COL_IDLE, ACCENT, t)
-        c.stripe.Size        = Vector2.new(3 + t * 2, c.h)
-        c.num.Color          = lerpColor(COL_MUTED, ACCENT, t)
-        c.desc.Color         = lerpColor(COL_MUTED, COL_SUB, t)
-        c.label.Position     = Vector2.new(c.textX + t * 3, c.y + 14)
-        c.desc.Position      = Vector2.new(c.textX + t * 3, c.y + 36)
-        c.pill.light.Color   = lerpColor(COL_IDLE, ACCENT, t)
-        c.tag.Color          = lerpColor(COL_SUB, ACCENT, t)
+        r.t = lerp(r.t, target, math.min(dt * 14, 1))
+        local t = r.t
+
+        r.fill.Transparency = t * 0.06 * rin
+        r.stripe.Transparency = t * rin
+        r.arrow.Transparency = t * rin
+        r.arrow.Position = Vector2.new(PANEL_X + 36 + (t - 1) * 6, r.y + 10)
+        r.num.Transparency = rin
+        if r.marker then r.marker.Transparency = (0.35 + 0.35 * (0.5 + 0.5 * math.sin(now * 3))) * rin end
+        r.label.Transparency = rin
+        r.desc.Transparency = rin
+        r.tag.Transparency = rin
+        r.tagBox.Transparency = (0.14 + t * 0.5) * rin
+        if r.divider then r.divider.Transparency = 0.07 * rin end
+
+        r.num.Color = lerpColor(C_MUTED, C_TEXT, t)
+        r.label.Color = lerpColor(C_SUB, C_TEXT, t)
+        r.desc.Color = lerpColor(C_MUTED, C_SUB, t)
+        r.tag.Color = lerpColor(C_MUTED, C_TEXT, t)
+        r.label.Position = Vector2.new(PANEL_X + 60 + t * 2, r.y + 10)
+        r.desc.Position = Vector2.new(PANEL_X + 60 + t * 2, r.y + 33)
+
+        if over and not r.hoverPrev then r.sheenT = now end
+        r.hoverPrev = over
+        if r.sheenT then
+            local p = (now - r.sheenT) / 0.55
+            if p >= 1 then
+                r.sheen.Transparency = 0
+                r.sheenT = nil
+            else
+                r.sheen.Position = Vector2.new(r.x - 36 + p * (PANEL_W + 36), r.y)
+                r.sheen.Transparency = (1 - p) * (1 - p) * 0.1 * rin
+            end
+        else
+            r.sheen.Transparency = 0
+        end
     end
 
-    local ex, ey = mx - exitX, my - exitY
-    local exitHover = (ex >= 0 and ex <= exitW and ey >= 0 and ey <= exitH) and not loading
-    if exitHover then
-        exitFrame.light.Color = ACCENT
-        exitFill.Transparency = 0.3
-        footer.Color = ACCENT
-    else
-        exitFrame.light.Color = COL_IDLE
-        exitFill.Transparency = 0.14
-        footer.Color = COL_MUTED
-    end
+    footLine.Transparency = 0.08 * fin
+    status.Transparency = fin
+    hint.Transparency = fin
+
+    local exitHover = (not loading) and inRect(mx, my, EXIT_X, EXIT_Y, EXIT_W, EXIT_H)
+    hint.Text = (hover and hover.tip) or "ESC  -  close"
+    hint.Color = exitHover and C_TEXT or (hover and C_SUB or C_MUTED)
 
     if m1 and exitHover and not loading then
         cleanup()
         return
-    end
-    if m1 and not loading and not hover and not overPlanet then
-        local last = streaks[#streaks]
-        if not last or math.sqrt((last.x - mx)^2 + (last.y - my)^2) > 2 then
-            if last then
-                local ln = newDrawing("Line")
-                ln.From = Vector2.new(last.x, last.y)
-                ln.To = Vector2.new(mx, my)
-                ln.Color = ACCENT
-                ln.Thickness = 4
-                ln.Transparency = 1
-                ln.ZIndex = 10
-                ln.Visible = true
-                streakSegments[#streakSegments + 1] = { d = ln, t = now, fade = 1 }
-            end
-            streaks[#streaks + 1] = { x = mx, y = my, t = now }
-        end
-    end
-
-    for i = #streaks, 1, -1 do
-        if now - streaks[i].t > STREAK_LIFE then
-            table.remove(streaks, i)
-        end
-    end
-
-    for i = #streakSegments, 1, -1 do
-        local seg = streakSegments[i]
-        local age = now - seg.t
-        if age > STREAK_LIFE then
-            pcall(function() seg.d.Visible = false end)
-            pcall(function() seg.d:Remove() end)
-            table.remove(streakSegments, i)
-        else
-            local fade = 1 - age / STREAK_LIFE
-            seg.d.Transparency = 0.15 + fade * 0.85
-            seg.d.Color = lerpColor(COL_SUB, ACCENT, fade)
-            seg.d.Thickness = 1 + fade * 2
-        end
     end
 
     if m1 and hover and not loading then
@@ -583,31 +496,43 @@ while not chosen do
             flash("Set the " .. tostring(hover.mode) .. " URL in GITHUB_URLS")
         else
             loading = true
+            fetching = false
+            pendingMode = hover.mode
+            pendingUrl = url
+            loadStart = tick()
             dotsT = 0
-            status.Color = COL_SUB
-            status.Text = "Fetching " .. hover.mode
-            local ok, body = pcall(function() return httpget(url) end)
-            if ok and type(body) == "string" and #body > 64 then
-                chosen = hover.mode
-                status.Color = COL_TEXT
-                status.Text = "Loading " .. chosen
-                pcall(writefile, "loadmode.txt", chosen)
-                _G._loadMode = chosen
-                task.wait(0.12)
-                cleanup()
-                local fn, err = loadstring(body)
-                if fn then
-                    local ran, runErr = pcall(fn)
-                    if not ran then
-                        pcall(notify, "gennegen", "Load error: " .. tostring(runErr), 4)
-                    end
-                else
-                    pcall(notify, "gennegen", "Compile error: " .. tostring(err), 4)
+            status.Color = C_SUB
+            status.Text = "Preparing " .. hover.mode
+            loadFill.Size = Vector2.new(0, 2)
+        end
+    end
+
+    if loading and not fetching and pendingUrl and now - loadStart >= LOAD_DELAY then
+        fetching = true
+        status.Text = "Fetching " .. pendingMode
+        local ok, body = pcall(function() return httpget(pendingUrl) end)
+        if ok and type(body) == "string" and #body > 64 then
+            chosen = pendingMode
+            status.Color = C_TEXT
+            status.Text = "Loading " .. chosen
+            pcall(writefile, "loadmode.txt", chosen)
+            _G._loadMode = chosen
+            task.wait(0.12)
+            cleanup()
+            local fn, err = loadstring(body)
+            if fn then
+                local ran, runErr = pcall(fn)
+                if not ran then
+                    pcall(notify, "gennegen", "Load error: " .. tostring(runErr), 4)
                 end
             else
-                loading = false
-                flash("Failed to fetch. Check the URL and try again.")
+                pcall(notify, "gennegen", "Compile error: " .. tostring(err), 4)
             end
+        else
+            loading = false
+            fetching = false
+            pendingUrl = nil
+            flash("Failed to fetch. Check the URL and try again.")
         end
     end
 
